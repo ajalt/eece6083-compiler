@@ -84,14 +84,15 @@ def tokenize_line(line):
             yield Token(token_map[c], c, pos, pos, 0, line)
         elif c in '<>:': # ambiguous terminals
             try:
-                yield Token(token_map[line[pos:pos+2]], line[pos:pos+2], pos, pos+1, 0, line)
+                lexeme = line[pos:pos+2]
+                yield Token(token_map[lexeme], lexeme, pos, pos + len(lexeme) - 1, 0, line)
                 pos += 1
             except KeyError:
                 yield Token(token_map[c], c, pos, pos, 0, line)
         elif c == '!': # NOTEQUAL
             if line[pos:pos+2] == '!=':
-                pos += 1
                 yield Token(tokens.NOTEQUAL, '!=', pos, pos + 1, 0, line)
+                pos += 1
             else:
                 raise SyntaxError("Illegal character '%s' encountered at column %s" % (line[pos+1], pos+1))
         elif c.isalpha(): # identifiers
