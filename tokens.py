@@ -1,6 +1,13 @@
 '''Token constants.
 
-This implementation isn't very DRY, but it's simple and works with code completionin IDE. This is also the method that the stdlib uses in token.py'''
+This implementation isn't very DRY, but it's simple and works with code
+completion. This is also similar to the method that the stdlib uses in
+token.py.
+
+The token types are assigned strings for readibility instead of the classic
+arbitrary integer values. This is not a performance issue, because python
+interns small strings, which allows equality comparisons to just use a pointer
+compare, which is the same speed as an integer compare. '''
 
 IDENTIFIER = 'IDENTIFIER'
 STRING = 'STRING'
