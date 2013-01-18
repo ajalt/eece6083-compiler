@@ -1,0 +1,16 @@
+procedure p (in arg1, in arg2, out out1) {
+    string s := "message";
+    int sum := 0;
+    // Here's a syntax error:
+    "error
+    // let's comment out the next line
+    //for (int i := 0; i < 3; i := i + 1) {
+    for (int i := 0; i < 3; i := i + 1) {
+        sum := sum + i;
+    }
+    
+    // Another syntax error
+    int i@
+    
+    return i;
+}

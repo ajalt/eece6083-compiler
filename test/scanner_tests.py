@@ -1,5 +1,6 @@
 from nose.tools import raises
 import string
+import os
 
 from src import scanner
 from src import tokens
@@ -95,3 +96,8 @@ def test_full_line():
     line = ' '.join(scanner.token_map) + '2' + '"string"' + '"'
     print len(list(scanner.tokenize_line(line))), len(scanner.token_map) + 3
     assert len(list(scanner.tokenize_line(line))) == len(scanner.token_map) + 3
+    
+def test_file():
+    token_list = list(scanner.tokenize_file(os.path.join('test', 'test_source.txt')))
+    print len(token_list)
+    assert len(token_list) == 56
