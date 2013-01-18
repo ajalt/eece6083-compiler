@@ -65,6 +65,8 @@ token_map = {
     'begin': tokens.BEGIN,
     'return': tokens.RETURN,
     'end': tokens.END,
+    'true': tokens.TRUE,
+    'false': tokens.FALSE,
 }
 
 def tokenize_line(line):
@@ -150,27 +152,30 @@ def tokenize_file(filename):
     '''
     with open(filename) as file:
         for lineno, line in enumerate(file):
-            try:
-                for token in tokenize_line(line):
-                    yield token._replace(lineno=lineno)
-            except SyntaxError, err:
-                print 'Line', lineno, ':', err
+            for token in tokenize_line(line):
+                yield token._replace(lineno=lineno)
                 
     
 def _advance_pos(line, pos, test):
+    # Return the index of the first character that fails the test function
     while pos < len(line) and (line[pos]  == '_' or test(line[pos])):
         pos += 1
     return pos
 
-def _report_error(token):
-    print token.token
-    print '   ', token.line
-    print '   ', ''.join(('^' if token.start <= i <= token.end else ' ') for i in xrange(len(token.line)))
-    print
-    
     
 if __name__ == '__main__':
-    for token in tokenize_line('string s = 123_.; global in "q2__" :<=<!==::={}>>=2_2._2'):
-        print token[:-1]
-    _report_error(next(tokenize_line('_2')))
+    import argparse
+    
+    argparser = argparse.ArgumentParser(description='Test the scanner functionality')
+    argparser.add_argument('filename', help='the file to scan')
+    args = argparser.parse_args()
+    
+    for token in tokenize_file(args.filename):
+        if token.type == tokens.ERROR:
+            print token.token
+            print '   ', token.line.rstrip()
+            print '   ', ''.join(('^' if token.start <= i <= token.end else ' ') for i in xrange(len(token.line)))
+            print
+        else:
+            print token
     
