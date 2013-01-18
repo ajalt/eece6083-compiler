@@ -11,6 +11,10 @@ form of tuples. Both functions generate namedtuples with the following members:
     the full original line (a string)
 
 tokenize_line will always generate tokens with the line number member set to 0.
+
+Scanning does not stop when a syntax error is encountered. Instead, errors are
+reported by yielding a token of type ERROR. In these tokens, the token string is
+the error message, and the start and end indices are the locations of the error.
 '''
 
 import collections
@@ -98,7 +102,10 @@ def tokenize_line(line):
                 yield Token(tokens.NOTEQUAL, '!=', pos, pos + 1, 0, line)
                 pos += 1
             else:
-                _report_error("Illegal character '%s' encountered" % line[pos+1], line, pos+1)
+                # If we're at the end of a line, the apostrophe itself is
+                # illegal, otherwise the character after it is illegal.
+                errorpos = pos if pos == length - 1 else pos + 1
+                yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[errorpos], errorpos, errorpos, 0, line)
         elif c.isalpha(): # identifiers
             startpos = pos
             pos = _advance_pos(line, pos, lambda c:c.isalnum()) # \w*
@@ -116,17 +123,17 @@ def tokenize_line(line):
             startpos = pos
             pos = line.find('"', pos + 1)
             if pos == -1:
-                _report_error('EOL while scanning string literal', line, length-1)
-                break
+                yield Token(tokens.ERROR, 'EOL while scanning string literal', startpos, length-1, 0, line)
+                return
             # use [startpos:pos+1] to include the final quotation mark
             lexeme = line[startpos:pos+1]
             illegal_characters = [(i, c) for (i, c) in enumerate(lexeme[1:-1]) if c not in legal_string_characters]
             if illegal_characters:
-                _report_error('Illegal characters found in string', line, [i+startpos+1 for i,c in illegal_characters])
+                yield Token(tokens.ERROR, 'Illegal characters %s found in string' % str(tuple(c for i, c in illegal_characters)), startpos, pos, 0, line)
             else:
                 yield Token(tokens.STRING, lexeme, startpos, pos, 0, line)
         else:
-            _report_error("Illegal character '%s' encountered" % c, line, pos)
+            yield Token(tokens.ERROR, "Illegal character '%s' encountered" % c, pos, pos, 0, line)
         pos += 1
     
 def tokenize_file(filename):
@@ -149,30 +156,21 @@ def tokenize_file(filename):
             except SyntaxError, err:
                 print 'Line', lineno, ':', err
                 
-    # We probably don't need and EOF token at all, so this might get removed later.
-    # Use the fact that python 2.x leaks index variables outside of their loop's scope to get lineno.
-    yield Token(tokens.EOF, '', 0, 0, lineno + 1, '')
-    
     
 def _advance_pos(line, pos, test):
     while pos < len(line) and (line[pos]  == '_' or test(line[pos])):
         pos += 1
     return pos
 
-def _report_error(message, line='', highlight_indexes=()):
-    try:
-        iter(highlight_indexes)
-    except TypeError:
-        highlight_indexes = [highlight_indexes]
-        
-    print message
-    if line:
-        print '   ', line
-        print '   ', ''.join(('^' if i in highlight_indexes else ' ') for i in xrange(len(line)))
-        print
+def _report_error(token):
+    print token.token
+    print '   ', token.line
+    print '   ', ''.join(('^' if token.start <= i <= token.end else ' ') for i in xrange(len(token.line)))
+    print
     
     
 if __name__ == '__main__':
-    #for token in tokenize_line('string s = 123_.; global in "q2__" :<=<!==::={}>>=2_2._2'):
-    #    print token[:-1]
-    print next(tokenize_line('"as$@d"'))
+    for token in tokenize_line('string s = 123_.; global in "q2__" :<=<!==::={}>>=2_2._2'):
+        print token[:-1]
+    _report_error(next(tokenize_line('_2')))
+    
