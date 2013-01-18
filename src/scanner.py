@@ -13,10 +13,14 @@ form of tuples. Both functions generate namedtuples with the following members:
 tokenize_line will always generate tokens with the line number member set to 0.
 '''
 
-import tokens
 import collections
+import string
+
+import tokens
 
 Token = collections.namedtuple('Token', ['type', 'token', 'start', 'end', 'lineno', 'line'])
+
+legal_string_characters = string.letters + string.digits + " _,;:.'"
 
 token_map = {
     ':': tokens.COLON,
@@ -94,7 +98,7 @@ def tokenize_line(line):
                 yield Token(tokens.NOTEQUAL, '!=', pos, pos + 1, 0, line)
                 pos += 1
             else:
-                raise SyntaxError("Illegal character '%s' encountered at column %s" % (line[pos+1], pos+1))
+                _report_error("Illegal character '%s' encountered" % line[pos+1], line, pos+1)
         elif c.isalpha(): # identifiers
             startpos = pos
             pos = _advance_pos(line, pos, lambda c:c.isalnum()) # \w*
@@ -112,11 +116,17 @@ def tokenize_line(line):
             startpos = pos
             pos = line.find('"', pos + 1)
             if pos == -1:
-                raise SyntaxError('EOL while scanning string literal')
+                _report_error('EOL while scanning string literal', line, length-1)
+                break
             # use [startpos:pos+1] to include the final quotation mark
-            yield Token(tokens.STRING, line[startpos:pos+1], startpos, pos, 0, line)
+            lexeme = line[startpos:pos+1]
+            illegal_characters = [(i, c) for (i, c) in enumerate(lexeme[1:-1]) if c not in legal_string_characters]
+            if illegal_characters:
+                _report_error('Illegal characters found in string', line, [i+startpos+1 for i,c in illegal_characters])
+            else:
+                yield Token(tokens.STRING, lexeme, startpos, pos, 0, line)
         else:
-            raise SyntaxError("Illegal character '%s' encountered at column %s" % (c, pos))
+            _report_error("Illegal character '%s' encountered" % c, line, pos)
         pos += 1
     
 def tokenize_file(filename):
@@ -148,8 +158,21 @@ def _advance_pos(line, pos, test):
     while pos < len(line) and (line[pos]  == '_' or test(line[pos])):
         pos += 1
     return pos
+
+def _report_error(message, line='', highlight_indexes=()):
+    try:
+        iter(highlight_indexes)
+    except TypeError:
+        highlight_indexes = [highlight_indexes]
+        
+    print message
+    if line:
+        print '   ', line
+        print '   ', ''.join(('^' if i in highlight_indexes else ' ') for i in xrange(len(line)))
+        print
     
     
 if __name__ == '__main__':
-    for token in tokenize_line('string s = 123_.; global in "q2__" :<=<!==::={}>>=2_2._2'):
-        print token[:-1]
+    #for token in tokenize_line('string s = 123_.; global in "q2__" :<=<!==::={}>>=2_2._2'):
+    #    print token[:-1]
+    print next(tokenize_line('"as$@d"'))

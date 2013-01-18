@@ -23,3 +23,14 @@ def test_legal_strings():
 
 def check_string(line):
     assert _get_single_token(line) == (tokens.STRING, line, 0, len(line) - 1, 0, line)
+    
+    
+@raises(StopIteration)
+def test_illegal_character_in_string():
+    _get_single_token('"@"')
+    
+@raises(StopIteration)
+def test_eol_in_string():
+    _get_single_token('"')
+    
+
