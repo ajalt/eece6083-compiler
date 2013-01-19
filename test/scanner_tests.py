@@ -61,6 +61,7 @@ def test_for_error_tokens():
                  '"', # EOL in string
                  '!', # '!' at EOL
                  '@', # illegal character
+                 '.', # dot by itself shouldn't be a number
                  ):
         yield check_for_error, line
         
