@@ -69,7 +69,7 @@ token_map = {
     'false': tokens.FALSE,
 }
 
-def tokenize_line(line):
+def tokenize_line(line, lineno=0):
     '''Generate tokens from a single line of text.
     
     The generator produces 6-tuples with the following members:
@@ -78,7 +78,7 @@ def tokenize_line(line):
         the token/lexeme (a string)
         the starting position of the token in the line (an int)
         the ending position of the token in the line (an int)
-        the integer 0
+        the number of the line in the file in which the token occurs (an int, default=0)
         the full original line (a string)
     '''
     pos = 0
@@ -91,51 +91,51 @@ def tokenize_line(line):
         if c.isspace(): # whitespace
             pass
         elif c in ';,+-*/()={}': # unambiguous terminals
-            yield Token(token_map[c], c, pos, pos, 0, line)
+            yield Token(token_map[c], c, pos, pos, lineno, line)
         elif c in '<>:': # ambiguous terminals
             try:
                 lexeme = line[pos:pos+2]
-                yield Token(token_map[lexeme], lexeme, pos, pos + len(lexeme) - 1, 0, line)
+                yield Token(token_map[lexeme], lexeme, pos, pos + len(lexeme) - 1, lineno, line)
                 pos += 1
             except KeyError:
-                yield Token(token_map[c], c, pos, pos, 0, line)
+                yield Token(token_map[c], c, pos, pos, lineno, line)
         elif c == '!': # NOTEQUAL
             if line[pos:pos+2] == '!=':
-                yield Token(tokens.NOTEQUAL, '!=', pos, pos + 1, 0, line)
+                yield Token(tokens.NOTEQUAL, '!=', pos, pos + 1, lineno, line)
                 pos += 1
             else:
-                # If we're at the end of a line, the apostrophe itself is
+                # If we're at the end of a line, the exclamation point itself is
                 # illegal, otherwise the character after it is illegal.
                 errorpos = pos if pos == length - 1 else pos + 1
-                yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[errorpos], errorpos, errorpos, 0, line)
+                yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[errorpos], errorpos, errorpos, lineno, line)
         elif c.isalpha(): # identifiers
             startpos = pos
             pos = _advance_pos(line, pos, lambda c:c.isalnum()) # \w*
             token_type = token_map.get(line[startpos:pos], tokens.IDENTIFIER)
-            yield Token(token_type, line[startpos:pos], startpos, pos - 1, 0, line)
+            yield Token(token_type, line[startpos:pos], startpos, pos - 1, lineno, line)
             pos -= 1
         elif c.isdigit(): # number
             startpos = pos
             pos = _advance_pos(line, pos, lambda c:c.isdigit()) # [0-9_]*
             if pos < length and line[pos] == '.': 
                 pos = _advance_pos(line, pos + 1, lambda c:c.isdigit()) # [0-9_]*
-            yield Token(tokens.NUMBER, line[startpos:pos], startpos, pos - 1, 0, line)
+            yield Token(tokens.NUMBER, line[startpos:pos], startpos, pos - 1, lineno, line)
             pos -= 1
         elif c == '"': # string
             startpos = pos
             pos = line.find('"', pos + 1)
             if pos == -1:
-                yield Token(tokens.ERROR, 'EOL while scanning string literal', startpos, length-1, 0, line)
+                yield Token(tokens.ERROR, 'EOL while scanning string literal', startpos, length-1, lineno, line)
                 return
             # use [startpos:pos+1] to include the final quotation mark
             lexeme = line[startpos:pos+1]
             illegal_characters = [(i, c) for (i, c) in enumerate(lexeme[1:-1]) if c not in legal_string_characters]
             if illegal_characters:
-                yield Token(tokens.ERROR, 'Illegal characters %s found in string' % str(tuple(c for i, c in illegal_characters)), startpos, pos, 0, line)
+                yield Token(tokens.ERROR, 'Illegal characters %s found in string' % str(tuple(c for i, c in illegal_characters)), startpos, pos, lineno, line)
             else:
-                yield Token(tokens.STRING, lexeme, startpos, pos, 0, line)
+                yield Token(tokens.STRING, lexeme, startpos, pos, lineno, line)
         else:
-            yield Token(tokens.ERROR, "Illegal character '%s' encountered" % c, pos, pos, 0, line)
+            yield Token(tokens.ERROR, "Illegal character '%s' encountered" % c, pos, pos, lineno, line)
         pos += 1
     
 def tokenize_file(filename):
@@ -152,8 +152,8 @@ def tokenize_file(filename):
     '''
     with open(filename) as file:
         for lineno, line in enumerate(file):
-            for token in tokenize_line(line):
-                yield token._replace(lineno=lineno)
+            for token in tokenize_line(line, lineno):
+                yield token
                 
     
 def _advance_pos(line, pos, test):
