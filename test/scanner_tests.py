@@ -2,8 +2,8 @@ from nose.tools import raises
 import string
 import os
 
-from src import scanner
-from src import tokens
+from compiler import scanner
+from compiler import tokens
 
 def _get_single_token(line):
     return next(scanner.tokenize_line(line))
