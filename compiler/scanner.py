@@ -45,6 +45,8 @@ token_map = {
     ':=': tokens.ASSIGN,
     '{': tokens.OPENBRACE,
     '}': tokens.CLOSEBRACE,
+    '[': tokens.OPENBRACKET,
+    ']': tokens.CLOSEBRACKET,
     'string': tokens.STRING_KEYWORD,
     'int': tokens.INT,
     'bool': tokens.BOOL,
@@ -67,6 +69,7 @@ token_map = {
     'end': tokens.END,
     'true': tokens.TRUE,
     'false': tokens.FALSE,
+    'is': tokens.IS
 }
 
 def tokenize_line(line, lineno=0):
@@ -90,9 +93,9 @@ def tokenize_line(line, lineno=0):
             return
         if c.isspace(): # whitespace
             pass
-        elif c in ';,+-*/()={}': # unambiguous terminals
+        elif c in ';,+-*/()={}[]': # unambiguous lexemes
             yield Token(token_map[c], c, pos, pos, lineno, line)
-        elif c in '<>:': # ambiguous terminals
+        elif c in '<>:': # ambiguous lexemes
             try:
                 lexeme = line[pos:pos+2]
                 yield Token(token_map[lexeme], lexeme, pos, pos + len(lexeme) - 1, lineno, line)
@@ -119,7 +122,8 @@ def tokenize_line(line, lineno=0):
             pos = _advance_pos(line, pos, lambda c:c.isdigit()) # [0-9_]*
             if pos < length and line[pos] == '.': 
                 pos = _advance_pos(line, pos + 1, lambda c:c.isdigit()) # [0-9_]*
-            yield Token(tokens.NUMBER, line[startpos:pos], startpos, pos - 1, lineno, line)
+            # We remove underscore characters from numbers here with replace().
+            yield Token(tokens.NUMBER, line[startpos:pos].replace('_', ''), startpos, pos - 1, lineno, line)
             pos -= 1
         elif c == '"': # string
             startpos = pos
@@ -179,3 +183,6 @@ if __name__ == '__main__':
         else:
             print token
     
+if __name__ == '__main__':
+    for k,v in token_map.iteritems():
+        print "%s: '%s';" % (v,k)

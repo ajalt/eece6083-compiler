@@ -1,6 +1,7 @@
 from nose.tools import raises
 import string
 import os
+import itertools
 
 from compiler import scanner
 from compiler import tokens
@@ -11,6 +12,11 @@ def _get_single_token(line):
 def test_individual_tokens():
     for line, token_type in scanner.token_map.iteritems():
         yield check_token, line, token_type
+        
+def check_token(line, token_type):
+    token = _get_single_token(line)
+    print tuple(token), (token_type, line, 0, len(line) - 1, 0, line) 
+    assert token == (token_type, line, 0, len(line) - 1, 0, line)
         
 def test_numbers():
     for line in ('1',
@@ -24,12 +30,13 @@ def test_numbers():
                 '1.1_',
                 '1_._1_'
                  ):
-        yield check_token, line, tokens.NUMBER
+        yield check_number, line
 
-def check_token(line, token_type):
+def check_number(line):
     token = _get_single_token(line)
-    print tuple(token), (token_type, line, 0, len(line) - 1, 0, line) 
-    assert token == (token_type, line, 0, len(line) - 1, 0, line)
+    expected = (tokens.NUMBER, line.replace('_', ''), 0, len(line) - 1, 0, line) 
+    print tuple(token), expected
+    assert token == expected
     
 def test_single_character_ambiguous_terminals():
     # Although these token types are tested in the previous function, the
@@ -94,9 +101,12 @@ def check_for_stop_iteration(line):
     
 def test_full_line():
     # end the line with an unmatched quote to get an error token
-    line = ' '.join(scanner.token_map) + '2' + '"string"' + '"'
-    print len(list(scanner.tokenize_line(line))), len(scanner.token_map) + 3
-    assert len(list(scanner.tokenize_line(line))) == len(scanner.token_map) + 3
+    lexemes = list(s + ' ' for s in scanner.token_map) + ['2', '"string"', '"']
+    result = list(scanner.tokenize_line(''.join(lexemes)))
+    print 'Result len:', len(result), 'Expected:', len(lexemes)
+    for res, exp in itertools.izip_longest(result, lexemes):
+        print res[:2], exp
+    assert len(result) == len(lexemes)
     
 def test_file():
     token_list = list(scanner.tokenize_file(os.path.join('test', 'test_source.txt')))
