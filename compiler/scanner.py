@@ -19,6 +19,7 @@ the error message, and the start and end indices are the locations of the error.
 
 import collections
 import string
+import StringIO
 
 import tokens
 
@@ -141,6 +142,16 @@ def tokenize_line(line, lineno=0):
         else:
             yield Token(tokens.ERROR, "Illegal character '%s' encountered" % c, pos, pos, lineno, line)
         pos += 1
+        
+def _tokenize_file_obj(file):
+    for lineno, line in enumerate(file):
+        for token in tokenize_line(line, lineno):
+            yield token
+    yield Token(tokens.EOF, 'EOF', 0, 0, lineno, '')
+    
+def tokenize_string(string_):
+    return _tokenize_file_obj(StringIO.StringIO(string_))
+        
     
 def tokenize_file(filename):
     '''Generate tokens from a file on disk.
@@ -155,10 +166,7 @@ def tokenize_file(filename):
         the full original line (a string)
     '''
     with open(filename) as file:
-        for lineno, line in enumerate(file):
-            for token in tokenize_line(line, lineno):
-                yield token
-                
+        return _tokenize_file_obj(file)
     
 def _advance_pos(line, pos, test):
     # Return the index of the first character that fails the test function
@@ -182,7 +190,3 @@ if __name__ == '__main__':
             print
         else:
             print token
-    
-if __name__ == '__main__':
-    for k,v in token_map.iteritems():
-        print "%s: '%s';" % (v,k)
