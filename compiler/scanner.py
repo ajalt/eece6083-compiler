@@ -167,8 +167,8 @@ def tokenize_file(filename):
     '''
     with open(filename) as file:
         # We can't just return the generator created in _tokenize_file_obj here,
-        # because the file will clsoe as soon as we do. It will remain open if
-        # this funciton is also a generator.
+        # because the file will close as soon as we do. It will remain open if
+        # this function is also a generator.
         for token in _tokenize_file_obj(file):
             yield token
             
