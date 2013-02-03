@@ -45,7 +45,10 @@ class _Parser(object):
             precedence = 0
             
             def __init__(self, id):
-                return syntaxtree.Name(id)
+                self.id = id
+            
+            def prefix(self):
+                return syntaxtree.Name(self.id)
             
         class InfixOperator(Symbol):
             def __init__(self, op, precedence):
@@ -64,26 +67,43 @@ class _Parser(object):
                 return syntaxtree.UnaryOp(tokens.MINUS, self.parser.expression(self.prefix_precedence))
             
         class OpenParen(Symbol):
+            def __init__(self, precedence):
+                self.precedence = precedence
+                
             def prefix(self):
+                # Grouping
                 exp = self.parser.expression()
                 self.parser.match(tokens.CLOSEPAREN)
                 return exp
+            
+            def infix(self, left_term):
+                # Function call
+                function_name = left_term
+                function_args = []
+                if self.parser.next_token.type != tokens.CLOSEPAREN:
+                    function_args.append(self.parser.expression())
+                    while self.parser.token.type == tokens.COMMA:
+                        self.parser.match(tokens.COMMA)
+                        function_args.append(self.parser.expression())
+                self.parser.match(tokens.CLOSEPAREN)
+                return syntaxtree.Call(function_name, function_args)
                 
         self.expression_operators = {
             tokens.NUMBER: Number,
             tokens.IDENTIFIER: Identifier,
-            tokens.OPENPAREN: OpenParen(tokens.OPENPAREN),
             tokens.CLOSEPAREN: Symbol(tokens.CLOSEPAREN),
+            tokens.COMMA: Symbol(tokens.COMMA),
             tokens.PLUS: InfixOperator(tokens.PLUS, 1),
             tokens.MINUS: Minus(1, 4),
             tokens.LT: InfixOperator(tokens.LT, 2),
             tokens.GTE: InfixOperator(tokens.GTE, 2),
-            tokens.LTE: InfixOperator(tokens.GTE, 2),
+            tokens.LTE: InfixOperator(tokens.LTE, 2),
             tokens.GT: InfixOperator(tokens.GT, 2),
             tokens.EQUAL: InfixOperator(tokens.EQUAL, 2),
             tokens.NOTEQUAL: InfixOperator(tokens.NOTEQUAL, 2),
             tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 3),
             tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 3),
+            tokens.OPENPAREN: OpenParen(4),
             tokens.EOF: Symbol(tokens.EOF),
         }
                 
@@ -144,8 +164,16 @@ if __name__ == '__main__':
             print ')',
         elif isinstance(node, syntaxtree.Num):
             print node.n,
+        elif isinstance(node, syntaxtree.Name):
+            print node.id,
+        elif isinstance(node, syntaxtree.Call):
+            print '%s(' % node.func.id,
+            for arg in node.args:
+                print_node(arg)
+                print ',',
+            print ')',
         
-
-    parse = parse_line('0 + (1 + 2) * 3 + 4')
+    parse = parse_line('1 + f(x) / 3')
+    print parse
     print_node(parse)
     
