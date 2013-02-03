@@ -111,4 +111,4 @@ def test_full_line():
 def test_file():
     token_list = list(scanner.tokenize_file(os.path.join('test', 'test_source.txt')))
     print len(token_list)
-    assert len(token_list) == 56
+    assert len(token_list) == 57

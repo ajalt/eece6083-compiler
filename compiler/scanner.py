@@ -143,8 +143,8 @@ def tokenize_line(line, lineno=0):
             yield Token(tokens.ERROR, "Illegal character '%s' encountered" % c, pos, pos, lineno, line)
         pos += 1
         
-def _tokenize_file_obj(file):
-    for lineno, line in enumerate(file):
+def _tokenize_file_obj(file_):
+    for lineno, line in enumerate(file_):
         for token in tokenize_line(line, lineno):
             yield token
     yield Token(tokens.EOF, 'EOF', 0, 0, lineno, '')
@@ -166,8 +166,12 @@ def tokenize_file(filename):
         the full original line (a string)
     '''
     with open(filename) as file:
-        return _tokenize_file_obj(file)
-    
+        # We can't just return the generator created in _tokenize_file_obj here,
+        # because the file will clsoe as soon as we do. It will remain open if
+        # this funciton is also a generator.
+        for token in _tokenize_file_obj(file):
+            yield token
+            
 def _advance_pos(line, pos, test):
     # Return the index of the first character that fails the test function
     while pos < len(line) and (line[pos]  == '_' or test(line[pos])):
