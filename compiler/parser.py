@@ -49,6 +49,15 @@ class _Parser(object):
             
             def prefix(self):
                 return syntaxtree.Name(self.id)
+
+        class String(Symbol):
+            precedence = 0
+
+            def __init__(self, s):
+                self.s = s
+
+            def prefix(self):
+                return syntaxtree.Str(self.s)
             
         class InfixOperator(Symbol):
             def __init__(self, op, precedence):
@@ -87,12 +96,26 @@ class _Parser(object):
                         function_args.append(self.parser.expression())
                 self.parser.match(tokens.CLOSEPAREN)
                 return syntaxtree.Call(function_name, function_args)
+               
+         
+        class OpenBracket(Symbol):
+            def __init__(self, precedence):
+                self.precedence = precedence
                 
+            def infix(self, left_term):
+                # Array Index
+                index = self.parser.expression()
+                self.parser.match(tokens.CLOSEBRACKET)
+                return syntaxtree.Subscript(left_term, index) 
+
+
         self.expression_operators = {
             tokens.NUMBER: Number,
             tokens.IDENTIFIER: Identifier,
+            tokens.STRING: String,
             tokens.CLOSEPAREN: Symbol(tokens.CLOSEPAREN),
             tokens.COMMA: Symbol(tokens.COMMA),
+            tokens.CLOSEBRACKET: Symbol(tokens.CLOSEBRACKET),
             tokens.PLUS: InfixOperator(tokens.PLUS, 1),
             tokens.MINUS: Minus(1, 4),
             tokens.LT: InfixOperator(tokens.LT, 2),
@@ -104,13 +127,14 @@ class _Parser(object):
             tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 3),
             tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 3),
             tokens.OPENPAREN: OpenParen(4),
+            tokens.OPENBRACKET: OpenBracket(4),
             tokens.EOF: Symbol(tokens.EOF),
         }
                 
     
     @property
     def current_symbol(self):
-        if self.token.type in (tokens.NUMBER, tokens.IDENTIFIER):
+        if self.token.type in (tokens.NUMBER, tokens.IDENTIFIER, tokens.STRING):
             return self.expression_operators[self.token.type](self.token.token)
         return self.expression_operators[self.token.type]
     
@@ -173,7 +197,7 @@ if __name__ == '__main__':
                 print ',',
             print ')',
         
-    parse = parse_line('1 + f(x) / 3')
+    parse = parse_line('func()')
     print parse
     print_node(parse)
     
