@@ -4,10 +4,10 @@ import string
 import os
 import itertools
 
-from compiler import scanner
-from compiler import tokens
-from compiler import parser
-from compiler import syntaxtree
+from src import scanner
+from src import tokens
+from src import parser
+from src import syntaxtree
 
 # expression tests
 def parse_ex(exp):

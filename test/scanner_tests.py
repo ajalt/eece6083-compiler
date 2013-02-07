@@ -3,8 +3,8 @@ import string
 import os
 import itertools
 
-from compiler import scanner
-from compiler import tokens
+from src import scanner
+from src import tokens
 
 def _get_single_token(line):
     return next(scanner.tokenize_line(line))
