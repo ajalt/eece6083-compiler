@@ -1,5 +1,10 @@
 from collections import namedtuple
 
+Program = namedtuple('Program', ['name', 'decls', 'body'])
+VarDecl = namedtuple('VarDecl', ['is_global', 'type', 'name', 'array_size'])
+ProcDecl = namedtuple('ProcDecl', ['is_global', 'name', 'params', 'body'])
+Param = namedtuple('Param', ['var', 'direction'])
+
 # Expression nodes
 BinaryOp = namedtuple('BinaryOp', ['op', 'left', 'right'])
 UnaryOp = namedtuple('UnaryOp', ['op', 'operand'])

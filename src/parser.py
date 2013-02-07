@@ -4,12 +4,25 @@ import tokens
 import scanner
 import syntaxtree
 
-def _report_error(msg, token):
-    print 'Error on line %s: %s' % (token.lineno, msg)
-    underline = '^' if token.start == token.end else '~'
-    print '   ', token.line.rstrip()
-    print '   ', ''.join((underline if token.start <= i <= token.end else ' ') for i in xrange(len(token.line.rstrip())))
+class ParseError(SyntaxError):
+    def __init__(self, msg, token):
+        self.msg = msg
+        self.token = token
     
+    def __str__(self):
+        underline = '^' if self.token.start == self.token.end else '~'
+        line = self.token.line.rstrip()
+        return ('Error on line %s: %s\n'
+                '    %s\n'
+                '    %s') % (self.token.lineno, self.msg, line,
+                             ''.join((underline if self.token.start <= i <= self.token.end else ' ')
+                                        for i in xrange(len(line))))
+    
+    def __repr__(self):
+        return 'ParseError(msg=%r, token=%r)' % (self.msg, self.token)
+
+type_marks = set((tokens.INT, tokens.FLOAT, tokens.BOOL, tokens.STRING_KEYWORD))
+
 class _Parser(object):
     def __init__(self, token_stream):
         # tee will take care of caching the iterator so that we can get the lookahead
@@ -33,12 +46,11 @@ class _Parser(object):
                 self.id = id
             
             def prefix(self):
-                _report_error("Unexpected '%s'" % self.id, self.parser.token)
-                raise SyntaxError
+                raise ParseError("Unexpected '%s'" % self.id, self.parser.token)
             
             def infix(self, left_term):
-                _report_error("Unexpected '%s'" % self.id, self.parser.token)
-                raise SyntaxError
+                raise ParseError("Unexpected '%s'" % self.id, self.parser.token)
+
             
         class Number(Symbol):
             precedence = 0
@@ -184,13 +196,27 @@ class _Parser(object):
         self.token, self.next_token = next(self._token_iter)
         
     def match(self, token_type):
-        if self.next_token.type != token_type:
-            _report_error('Expected %r, found %r' % (token_type, self.next_token.type), self.next_token)
-            raise SyntaxError
         self.advance_token()
+
+        if self.token is None:
+            raise ParseError('Unexpected EOF found', self.token)
+        if self.token.type != token_type:
+            raise ParseError('Expected %r, found %r' % (token_type, self.token.type), self.token)
     
     def parse(self):
-        self.match(tokens.PROGRAM)
+        try:
+            self.match(tokens.PROGRAM)
+            self.match(tokens.IDENTIFIER)
+            name = self.token.token
+            self.match(tokens.IS)
+            decls = self.declarations()
+            self.match(tokens.BEGIN)
+            #body = self.statements()
+            self.match(tokens.END)
+            self.match(tokens.PROGRAM)
+            return syntaxtree.Program(name, decls, [])
+        except ParseError as err:
+            print err
     
     def expression(self, precedence=0):
         self.advance_token()
@@ -202,6 +228,52 @@ class _Parser(object):
             left_term = self.current_symbol.infix(left_term)
         
         return left_term
+    
+    def declarations(self):
+        declarations = []
+        while self.next_token.type != tokens.BEGIN:
+            declarations.append(self.declaration())
+            self.match(tokens.SEMICOLON)
+        return declarations
+            
+    def declaration(self):
+        self.advance_token()
+        try:
+            if self.token.type == tokens.PROCEDURE:
+                return self.procedure_declaration()
+            return self.variable_declaration()
+        except ParseError as err:
+            print err
+            
+        return 'ERROR'
+    
+    def procedure_declaration(self):
+        raise NotImplementedError
+    
+    def variable_declaration(self):
+        if self.token.type == tokens.GLOBAL:
+            is_global = True
+            self.advance_token()
+        else:
+            is_global = False
+            
+        if self.token.type in type_marks:
+            type_mark = self.token.type
+        else:
+            raise ParseError('Expected type mark, found %s' % self.token.type, self.token)
+        
+        self.match(tokens.IDENTIFIER)
+        name = syntaxtree.Name(self.token.token)
+        
+        if self.next_token.type == tokens.OPENBRACKET:
+            self.advance_token()
+            self.match(tokens.NUMBER)
+            array_size = self.token.token
+            self.advance_token()
+        else:
+            array_size = None
+            
+        return syntaxtree.VarDecl(is_global, type_mark, name, array_size)
 
 
 def parse_tokens(token_stream):
@@ -209,7 +281,6 @@ def parse_tokens(token_stream):
     
     
 if __name__ == '__main__':
-    
     def print_node(node):
         if isinstance(node, syntaxtree.BinaryOp):
             print '(',
@@ -227,8 +298,24 @@ if __name__ == '__main__':
                 print_node(arg)
                 print ',',
             print ')',
+        elif isinstance(node, syntaxtree.Program):
+            print '(Program', node.name,
+            print_node(node.decls)
+            print_node(node.body)
+            print ')'
+        elif isinstance(node, list):
+            for n in node: print_node(n)
+        elif isinstance(node, syntaxtree.VarDecl):
+            print node
         
-    parse = parse_tokens(scanner.tokenize_string(('a[]')))
+    s = '''
+    program p is
+        float x;
+    begin
+    
+    end program
+    '''
+    parse = parse_tokens(scanner.tokenize_string((s)))
     print parse
-    print_node(parse)
+    #print_node(parse)
     

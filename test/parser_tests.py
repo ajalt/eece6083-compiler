@@ -9,9 +9,12 @@ from src import tokens
 from src import parser
 from src import syntaxtree as st
 
+def get_parser(src):
+    return parser._Parser(scanner.tokenize_string(src))
+
 # expression tests
 def parse_ex(exp):
-    return parser._Parser(scanner.tokenize_string(exp)).expression()
+    return get_parser(exp).expression()
 
 def test_number():
     ast = parse_ex('123')
@@ -111,5 +114,33 @@ def test_nested_calls():
     assert ast == st.Call(st.Name('f'), [st.Call(st.Name('g'), [st.Name('x')])])
     
     
+# declaration tests
+
+def parse_decl(src):
+    return get_parser(src).declaration()
+
+def test_type_decls():
+    types = {
+        'string': tokens.STRING_KEYWORD,
+        'int': tokens.INT,
+        'bool': tokens.BOOL,
+        'float': tokens.FLOAT,
+    }
+    for name, tok in types.iteritems():
+        for is_global in (True, False):
+            for array_len in (None, '0', '1'):
+                yield check_type_decl, is_global, name, tok, array_len
     
+def check_type_decl(is_global, name, tok, array_len):
+    ast = parse_decl('%s %s x%s' %
+                     ('global' if is_global else '',name,
+                      '[%s]' % array_len if array_len is not None else ''))
+    expected = st.VarDecl(is_global, tok, st.Name('x'), array_len)
+    print 'Got:     ',ast
+    print 'Expected:', expected
+    assert isinstance(ast, st.VarDecl)
+    assert ast == expected
+    
+    
+
     
