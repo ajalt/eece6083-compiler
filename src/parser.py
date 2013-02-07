@@ -4,6 +4,12 @@ import tokens
 import scanner
 import syntaxtree
 
+def _report_error(msg, token):
+    print 'Error on line %s: %s' % (token.lineno, msg)
+    underline = '^' if token.start == token.end else '~'
+    print '   ', token.line.rstrip()
+    print '   ', ''.join((underline if token.start <= i <= token.end else ' ') for i in xrange(len(token.line.rstrip())))
+    
 class _Parser(object):
     def __init__(self, token_stream):
         # tee will take care of caching the iterator so that we can get the lookahead
@@ -27,9 +33,11 @@ class _Parser(object):
                 self.id = id
             
             def prefix(self):
+                _report_error("Unexpected '%s'" % self.id, self.parser.token)
                 raise SyntaxError
             
             def infix(self, left_term):
+                _report_error("Unexpected '%s'" % self.id, self.parser.token)
                 raise SyntaxError
             
         class Number(Symbol):
@@ -59,6 +67,20 @@ class _Parser(object):
             def prefix(self):
                 return syntaxtree.Str(self.s)
             
+        class TrueVal(Symbol):
+            def __init__(self):
+                pass
+            
+            def prefix(self):
+                return syntaxtree.TrueVal
+            
+        class FalseVal(Symbol):
+            def __init__(self):
+                pass
+            
+            def prefix(self):
+                return syntaxtree.FalseVal
+            
         class InfixOperator(Symbol):
             def __init__(self, op, precedence):
                 self.op = op
@@ -66,6 +88,14 @@ class _Parser(object):
                 
             def infix(self, left_term):
                 return syntaxtree.BinaryOp(self.op, left_term, self.parser.expression(self.precedence))
+            
+        class PrefixOperator(Symbol):
+            def __init__(self, op, precedence):
+                self.op = op
+                self.precedence = precedence
+                
+            def prefix(self):
+                return syntaxtree.UnaryOp(self.op, self.parser.expression(self.precedence))
             
         class Minus(InfixOperator):
             def __init__(self, infix_precedence, prefix_precedence):
@@ -91,8 +121,8 @@ class _Parser(object):
                 function_args = []
                 if self.parser.next_token.type != tokens.CLOSEPAREN:
                     function_args.append(self.parser.expression())
-                    while self.parser.token.type == tokens.COMMA:
-                        self.parser.match(tokens.COMMA)
+                    while self.parser.next_token.type == tokens.COMMA:
+                        self.parser.advance_token()
                         function_args.append(self.parser.expression())
                 self.parser.match(tokens.CLOSEPAREN)
                 return syntaxtree.Call(function_name, function_args)
@@ -113,47 +143,54 @@ class _Parser(object):
             tokens.NUMBER: Number,
             tokens.IDENTIFIER: Identifier,
             tokens.STRING: String,
+            tokens.TRUE: TrueVal(),
+            tokens.FALSE: FalseVal(),
             tokens.CLOSEPAREN: Symbol(tokens.CLOSEPAREN),
             tokens.COMMA: Symbol(tokens.COMMA),
             tokens.CLOSEBRACKET: Symbol(tokens.CLOSEBRACKET),
-            tokens.PLUS: InfixOperator(tokens.PLUS, 1),
-            tokens.MINUS: Minus(1, 4),
-            tokens.LT: InfixOperator(tokens.LT, 2),
-            tokens.GTE: InfixOperator(tokens.GTE, 2),
-            tokens.LTE: InfixOperator(tokens.LTE, 2),
-            tokens.GT: InfixOperator(tokens.GT, 2),
-            tokens.EQUAL: InfixOperator(tokens.EQUAL, 2),
-            tokens.NOTEQUAL: InfixOperator(tokens.NOTEQUAL, 2),
-            tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 3),
-            tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 3),
-            tokens.OPENPAREN: OpenParen(4),
-            tokens.OPENBRACKET: OpenBracket(4),
+            tokens.OR: InfixOperator(tokens.OR, 1),
+            tokens.AND: InfixOperator(tokens.AND, 2),
+            tokens.NOT: PrefixOperator(tokens.NOT, 3),
+            tokens.PLUS: InfixOperator(tokens.PLUS, 4),
+            tokens.MINUS: Minus(4, 7),
+            tokens.LT: InfixOperator(tokens.LT, 5),
+            tokens.GTE: InfixOperator(tokens.GTE, 5),
+            tokens.LTE: InfixOperator(tokens.LTE, 5),
+            tokens.GT: InfixOperator(tokens.GT, 5),
+            tokens.EQUAL: InfixOperator(tokens.EQUAL, 5),
+            tokens.NOTEQUAL: InfixOperator(tokens.NOTEQUAL, 5),
+            tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 6),
+            tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 6),
+            tokens.OPENPAREN: OpenParen(7),
+            tokens.OPENBRACKET: OpenBracket(7),
             tokens.EOF: Symbol(tokens.EOF),
         }
                 
     
+    def _find_symbol(self, token):
+        if token.type in (tokens.NUMBER, tokens.IDENTIFIER, tokens.STRING):
+            return self.expression_operators[token.type](token.token)
+        return self.expression_operators[token.type]
+    
     @property
     def current_symbol(self):
-        if self.token.type in (tokens.NUMBER, tokens.IDENTIFIER, tokens.STRING):
-            return self.expression_operators[self.token.type](self.token.token)
-        return self.expression_operators[self.token.type]
+        return self._find_symbol(self.token)
     
     @property
     def next_symbol(self):
-        if self.next_token.type in (tokens.NUMBER, tokens.IDENTIFIER):
-            return self.expression_operators[self.next_token.type](self.next_token.token)
-        return self.expression_operators[self.next_token.type]
+        return self._find_symbol(self.next_token)
         
     def advance_token(self):
         self.token, self.next_token = next(self._token_iter)
         
     def match(self, token_type):
         if self.next_token.type != token_type:
-            raise SyntaxError('Expected %r, found %r' % (token_type, self.token.token))
+            _report_error('Expected %r, found %r' % (token_type, self.next_token.type), self.next_token)
+            raise SyntaxError
         self.advance_token()
     
     def parse(self):
-        return self.expression(0)
+        self.match(tokens.PROGRAM)
     
     def expression(self, precedence=0):
         self.advance_token()
@@ -166,12 +203,6 @@ class _Parser(object):
         
         return left_term
 
-
-def parse_file(filename):
-    return parse_tokens(scanner.tokenize_file(filename))
-
-def parse_line(line):
-    return parse_tokens(scanner.tokenize_string(line))
 
 def parse_tokens(token_stream):
     return _Parser(token_stream).parse()
@@ -197,7 +228,7 @@ if __name__ == '__main__':
                 print ',',
             print ')',
         
-    parse = parse_line('func()')
+    parse = parse_tokens(scanner.tokenize_string(('a[]')))
     print parse
     print_node(parse)
     
