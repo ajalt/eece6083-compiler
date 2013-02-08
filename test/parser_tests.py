@@ -33,10 +33,10 @@ def test_str():
     assert ast == st.Str('"str"')
     
 def test_literal_true():
-    assert parse_ex('true') == st.TrueVal
+    assert parse_ex('true') == tokens.TRUE
     
 def test_literal_false():
-    assert parse_ex('false') == st.FalseVal
+    assert parse_ex('false') == tokens.FALSE
 
 def test_call():
     ast = parse_ex('func()')
@@ -286,4 +286,45 @@ def test_missing_comma_in_paremeter_list():
 #def test_statement_in_procedure_declaration():
 #    assert False
     
+# Statement tests.
 
+def parse_statement(src):
+    return get_parser(src).statement()
+
+# assignment
+def test_assignment_statement():
+    ast = parse_statement('x := 1')
+    assert isinstance(ast, st.Assign)
+    assert ast == st.Assign(st.Name('x'), st.Num('1'))
+    
+def test_assignment_statement_with_expression_value():
+    ast = parse_statement('x := 1 + 2')
+    assert isinstance(ast, st.Assign)
+    assert ast == st.Assign(st.Name('x'), st.BinaryOp(tokens.PLUS, st.Num('1'), st.Num('2')))
+    
+# return
+def test_return_statement():
+    assert parse_statement('return') == tokens.RETURN
+    
+# if
+def test_minimal_if_statement():
+    ast = parse_statement('if 1 then return; end if')
+    assert isinstance(ast, st.If)
+    assert ast == st.If(st.Num('1'), [tokens.RETURN], [])
+    
+def test_if_else():
+    ast = parse_statement('if 1 then return; else return; end if')
+    assert isinstance(ast, st.If)
+    assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN])
+    
+def test_multiple_if_statements():
+    ast = parse_statement('if 1 then return; return; end if')
+    assert isinstance(ast, st.If)
+    assert ast == st.If(st.Num('1'), [tokens.RETURN, tokens.RETURN], [])
+    
+def test_multiple_else_statements():
+    ast = parse_statement('if 1 then return; else return; return; end if')
+    assert isinstance(ast, st.If)
+    assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN, tokens.RETURN])
+
+# loop

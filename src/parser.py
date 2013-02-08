@@ -46,10 +46,10 @@ class _Parser(object):
                 self.id = id
             
             def prefix(self):
-                raise ParseError("Unexpected '%s'" % self.id, self.parser.token)
+                raise ParseError("Unexpected '%s' in expression" % self.id, self.parser.token)
             
             def infix(self, left_term):
-                raise ParseError("Unexpected '%s'" % self.id, self.parser.token)
+                raise ParseError("Unexpected '%s' in expression" % self.id, self.parser.token)
 
             
         class Number(Symbol):
@@ -80,18 +80,12 @@ class _Parser(object):
                 return syntaxtree.Str(self.s)
             
         class TrueVal(Symbol):
-            def __init__(self):
-                pass
-            
             def prefix(self):
-                return syntaxtree.TrueVal
+                return tokens.TRUE
             
         class FalseVal(Symbol):
-            def __init__(self):
-                pass
-            
             def prefix(self):
-                return syntaxtree.FalseVal
+                return tokens.FALSE
             
         class InfixOperator(Symbol):
             def __init__(self, id, precedence):
@@ -139,7 +133,6 @@ class _Parser(object):
                 self.parser.match(tokens.CLOSEPAREN)
                 return syntaxtree.Call(function_name, function_args)
                
-         
         class OpenBracket(Symbol):
             def __init__(self, precedence):
                 self.precedence = precedence
@@ -150,13 +143,21 @@ class _Parser(object):
                 self.parser.match(tokens.CLOSEBRACKET)
                 return syntaxtree.Subscript(left_term, index) 
 
-
-        self.expression_operators = {
+        #  expression_operators is a map of tokens types to symbol classes. If a
+        #  token is encountered that is not valid in an expression, the map will
+        #  populate itself with a new entry that will end the expression or
+        #  raise an error if the expression is not in a valid state. 
+        class OperatorMap(dict):
+            def __missing__(self, key):
+                self[key] = Symbol(key)
+                return self[key]
+            
+        self.expression_operators = OperatorMap({
             tokens.NUMBER: Number,
             tokens.IDENTIFIER: Identifier,
             tokens.STRING: String,
-            tokens.TRUE: TrueVal(),
-            tokens.FALSE: FalseVal(),
+            tokens.TRUE: TrueVal(tokens.TRUE),
+            tokens.FALSE: FalseVal(tokens.FALSE),
             tokens.CLOSEPAREN: Symbol(tokens.CLOSEPAREN),
             tokens.COMMA: Symbol(tokens.COMMA),
             tokens.CLOSEBRACKET: Symbol(tokens.CLOSEBRACKET),
@@ -175,8 +176,7 @@ class _Parser(object):
             tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 6),
             tokens.OPENPAREN: OpenParen(7),
             tokens.OPENBRACKET: OpenBracket(7),
-            tokens.EOF: Symbol(tokens.EOF),
-        }
+        })
                 
     
     def _find_symbol(self, token):
@@ -206,6 +206,12 @@ class _Parser(object):
         if self.token.type != token_type:
             raise ParseError('Expected %r, found %r' % (token_type, self.token.type), self.token)
     
+    def _consume_optional_token(self, tok):
+        if self.token.type == tok:
+            self.advance_token()
+            return True
+        return False
+    
     def parse(self):
         # program
         try:
@@ -218,12 +224,12 @@ class _Parser(object):
             # program body
             decls = self.declarations()
             self.match(tokens.BEGIN)
-            body = []
-            #body = self.statements()
-            
+            body = self.statements()
             self.match(tokens.END)
             self.match(tokens.PROGRAM)
+            
             return syntaxtree.Program(name, decls, body)
+        
         except ParseError as err:
             print err
     
@@ -250,61 +256,55 @@ class _Parser(object):
             
     def declaration(self):
         self.advance_token()
-        
-        # The global keyword can appear before both type of declarations, so we
-        # don't know which one we're looking at until after we consume 'global'.
-        
-        if self.token.type == tokens.GLOBAL:
-            is_global = True
-            self.advance_token()
-        else:
-            is_global = False
-            
-        if self.token.type == tokens.PROCEDURE:
-            return self.procedure_declaration(is_global)
-        return self.variable_declaration(is_global)
+        if self.token.type == tokens.PROCEDURE or self.next_token.type == tokens.PROCEDURE:
+            return self.procedure_declaration()
+        return self.variable_declaration()
     
-    def procedure_declaration(self, is_global):
-        # The current token is assumed to be 'PROCEDURE' when this function is called.
+    def parameter(self):
+        self.advance_token()
+        decl = self.variable_declaration()
+        self.advance_token()
+        if self.token.type not in (tokens.IN, tokens.OUT):
+            # We could resync here.
+            raise ParseError('Direction missing from parameter specification', self.token)
+        direction = self.token.type
+        return syntaxtree.Param(decl, direction)
+    
+    def procedure_declaration(self):
+        is_global = self._consume_optional_token(tokens.GLOBAL)
+        
+        if self.token.type != tokens.PROCEDURE:
+            raise ParseError('Expected %r, found %r' % (tokens.PROCEDURE, self.token.type), self.token)
+        
         self.match(tokens.IDENTIFIER)
         name = syntaxtree.Name(self.token.token)
 
-        # parameter list
+        # Parameter list
         self.match(tokens.OPENPAREN)
+        
         parameters = []
-        while self.next_token.type != tokens.CLOSEPAREN:
-            self.advance_token()
-            if self.token.type == tokens.GLOBAL:
-                is_global = True
+        if self.next_token.type != tokens.CLOSEPAREN:
+            parameters.append(self.parameter())
+            while self.next_token.type == tokens.COMMA:
                 self.advance_token()
-            else:
-                is_global = False
-            decl = self.variable_declaration(is_global)
-            self.advance_token()
-            if self.token.type not in (tokens.IN, tokens.OUT):
-                # we could resync here
-                raise ParseError('Direction missing from parameter specification', self.token)
-            direction = self.token.type
-            parameters.append(syntaxtree.Param(decl, direction))
-            if self.next_token.type == tokens.COMMA:
-                self.advance_token()
+                parameters.append(self.parameter())
+        
         self.match(tokens.CLOSEPAREN)
             
         # local variable declarations
         var_decls = self.declarations()
         
+        # Body
         self.match(tokens.BEGIN)
-        
-        #body = self.statmenets()
-        body = []
-        
+        body = self.statmenets()
         self.match(tokens.END)
         self.match(tokens.PROCEDURE)
         
         return syntaxtree.ProcDecl(is_global, name, parameters, var_decls, body)
             
             
-    def variable_declaration(self, is_global):
+    def variable_declaration(self):
+        is_global = self._consume_optional_token(tokens.GLOBAL)
         if self.token.type in type_marks:
             type_mark = self.token.type
         else:
@@ -323,8 +323,52 @@ class _Parser(object):
             
         return syntaxtree.VarDecl(is_global, type_mark, name, array_size)
     
-
-
+    def statements(self):
+        statements = []
+        while self.next_token.type not in (tokens.END, tokens.ELSE):
+            try:
+                statements.append(self.statement())
+            except ParseError as err:
+                print err
+            self.match(tokens.SEMICOLON)
+        return statements
+    
+    def statement(self):
+        self.advance_token()
+        # these calls could all inlined
+        if self.token.type == tokens.IF:
+            return self.if_statement()
+        if self.token.type == tokens.FOR:
+            return self.for_statement()
+        if self.token.type == tokens.RETURN:
+            return tokens.RETURN
+        return self.assignment_statement()
+    
+    def assignment_statement(self):
+        if self.token.type != tokens.IDENTIFIER:
+            raise ParseError('Target of assignment must be a variable, not %s' % self.token.token, self.token)
+        
+        target = syntaxtree.Name(self.token.token)
+        self.match(tokens.ASSIGN)
+        value = self.expression()
+        return syntaxtree.Assign(target, value)
+    
+    def if_statement(self):
+        test = self.expression()
+        
+        self.match(tokens.THEN)
+        body = self.statements()
+        
+        if self.next_token.type == tokens.ELSE:
+            self.advance_token()
+            orelse = self.statements()
+        else:
+            orelse = []
+            
+        self.match(tokens.END)
+        self.match(tokens.IF)
+        
+        return syntaxtree.If(test, body, orelse)
 
 def parse_tokens(token_stream):
     return _Parser(token_stream).parse()
@@ -370,6 +414,6 @@ if __name__ == '__main__':
     #print parse
     #print_node(parse)
     
-    s = 'procedure f(int x in,) begin end procedure'
-    print _Parser(scanner.tokenize_string(s)).declaration()
+    s = '1 + then'
+    print _Parser(scanner.tokenize_string(s)).expression()
     
