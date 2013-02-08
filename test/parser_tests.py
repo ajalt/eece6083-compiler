@@ -71,11 +71,19 @@ def test_binary_ops():
     
     for op, tok in ops.iteritems():
         yield check_binary_op, op, tok
-
+        yield check_unmatched_binary_op, op
 def check_binary_op(op, tok):
     ast = parse_ex('1 %s 2' % op)
     assert isinstance(ast, st.BinaryOp)
     assert ast == st.BinaryOp(tok, st.Num('1'), st.Num('2'))
+    
+@raises(parser.ParseError)
+def check_unmatched_binary_op(op):
+    parse_ex('1 %s' % op)
+    
+@raises(parser.ParseError)
+def test_missing_operand():
+    print parse_ex('1 + + 4')
     
 def test_parenthesis_equal_containing_expression():
     exp = '1 + 2'
@@ -84,12 +92,28 @@ def test_parenthesis_equal_containing_expression():
 def test_parenthesis_grouping():
     assert parse_ex('2 * (1 + 3)') == st.BinaryOp(tokens.MULTIPLY, st.Num('2'),
                                 st.BinaryOp(tokens.PLUS, st.Num('1'), st.Num('3')))
+
+@raises(parser.ParseError)
+def test_unmatched_parentesis():
+    parse_ex('1 + (')
+    
+@raises(parser.ParseError)
+def test_empty_parenthesis():
+    parse_ex('()')
     
 def test_subscript():
     ast = parse_ex('a[1]')
     print ast
     assert isinstance(ast, st.Subscript)
     assert ast == (st.Name('a'), st.Num('1'))
+    
+@raises(parser.ParseError)
+def test_empty_subsrcipt():
+    parse_ex('a[]')
+    
+@raises(parser.ParseError)
+def test_unmatched_bracket():
+    parse_ex('a[')    
     
 def test_call_with_no_args():
     ast = parse_ex('f()')
@@ -119,6 +143,7 @@ def test_nested_calls():
 def parse_decl(src):
     return get_parser(src).declaration()
 
+# variable declartaion tests
 def test_type_decls():
     types = {
         'string': tokens.STRING_KEYWORD,
@@ -129,9 +154,9 @@ def test_type_decls():
     for name, tok in types.iteritems():
         for is_global in (True, False):
             for array_len in (None, '0', '1'):
-                yield check_type_decl, is_global, name, tok, array_len
+                yield check_type_declaration, is_global, name, tok, array_len
     
-def check_type_decl(is_global, name, tok, array_len):
+def check_type_declaration(is_global, name, tok, array_len):
     ast = parse_decl('%s %s x%s' %
                      ('global' if is_global else '',name,
                       '[%s]' % array_len if array_len is not None else ''))
@@ -141,6 +166,124 @@ def check_type_decl(is_global, name, tok, array_len):
     assert isinstance(ast, st.VarDecl)
     assert ast == expected
     
+@raises(parser.ParseError)
+def test_double_global():
+    parse_decl('global global int x')
+    
+@raises(parser.ParseError)
+def test_empty_brackets():
+    parse_decl('int x[]')
+    
+@raises(parser.ParseError)
+def test_expr_in_array_decl():
+    parse_decl('int x[1 + 2]')
+    
+@raises(parser.ParseError)
+def test_variable_arary_decl():
+    parse_decl('int x[g]')
+    
+@raises(parser.ParseError)
+def test_missing_type_mark():
+    parse_decl('global x')
+    
+@raises(parser.ParseError)
+def test_missing_name():
+    parse_decl('int')
+
+# procedure declaration tests
+
+def check_procedure_declaraiton(src, expected):
+    ast = parse_decl(src)
+    print 'Got:     ', ast
+    print 'Expected:', expected
+    
+    assert isinstance(ast, st.ProcDecl)
+    assert isinstance(ast.name, st.Name)
+    assert isinstance(ast.params, list)
+    assert isinstance(ast.var_decls, list)
+    assert isinstance(ast.body, list)
+    assert ast == expected
+    
+def test_minimal_procecure_declaration():
+    src = 'procedure f() begin end procedure'
+    expected = st.ProcDecl(False, st.Name('f'), [], [], [])
+    check_procedure_declaraiton(src, expected)
+    
+def test_global_procedure():
+    src = 'global procedure f() begin end procedure'
+    expected = st.ProcDecl(True, st.Name('f'), [], [], [])
+    check_procedure_declaraiton(src, expected)
+    
+def test_one_variable_declaration_in_procedure_declaration():
+    src = 'procedure f() int x; begin end procedure'
+    expected = st.ProcDecl(False, st.Name('f'), [],
+                           [st.VarDecl(False, tokens.INT, st.Name('x'), None)], [])
+    check_procedure_declaraiton(src, expected)
+    
+def test_two_variable_declarations_in_procedure_declaration():
+    src = 'procedure f() int x; int y; begin end procedure'
+    expected = st.ProcDecl(False, st.Name('f'), [],
+                           [st.VarDecl(False, tokens.INT, st.Name('x'), None),
+                            st.VarDecl(False, tokens.INT, st.Name('y'), None)], [])
+    check_procedure_declaraiton(src, expected)
+    
+def test_procecure_declaration_with_one_in_parameter():
+    src = 'procedure f(int x in) begin end procedure'
+    expected = st.ProcDecl(False, st.Name('f'),
+        [st.Param(st.VarDecl(False, tokens.INT, st.Name('x'), None), tokens.IN)], [], [])
+    check_procedure_declaraiton(src, expected)
+    
+def test_procecure_declaration_with_one_out_parameter():
+    src = 'procedure f(int x out) begin end procedure'
+    expected = st.ProcDecl(False, st.Name('f'),
+        [st.Param(st.VarDecl(False, tokens.INT, st.Name('x'), None), tokens.OUT)], [], [])
+    check_procedure_declaraiton(src, expected)
+    
+def test_procecure_declaration_with_two_parameters():
+    src = 'procedure f(int x in, int y out) begin end procedure'
+    expected = st.ProcDecl(False, st.Name('f'),
+        [st.Param(st.VarDecl(False, tokens.INT, st.Name('x'), None), tokens.IN),
+         st.Param(st.VarDecl(False, tokens.INT, st.Name('y'), None), tokens.OUT)], [], [])
+    check_procedure_declaraiton(src, expected)
     
 
+@raises(parser.ParseError)
+def test_missing_first_procedure_keyword():
+    parse_decl('f() begin end procedure')
     
+@raises(parser.ParseError)
+def test_missing_begin_keyword():
+    parse_decl('procedure f() end procedure')
+    
+@raises(parser.ParseError)
+def test_missing_end_keyword():
+    parse_decl('procedure f() begin procedure')
+    
+@raises(parser.ParseError)
+def test_missing_final_procedure_keyword():
+    parse_decl('procedure f() begin end')
+    
+@raises(parser.ParseError)
+def test_missing_paremeter_direction():
+    parse_decl('procedure f(int x) begin end procedure')
+    
+@raises(parser.ParseError)
+def test_missing_open_paren():
+    parse_decl('procedure f) begin end procedure')
+    
+@raises(parser.ParseError)
+def test_missing_close_paren():
+    parse_decl('procedure f( begin end procedure')
+
+@raises(parser.ParseError)
+def test_trailing_comma_in_parameter_list():
+    parse_decl('procedure f(int x in,) begin end procedure')
+    
+@raises(parser.ParseError)
+def test_missing_comma_in_paremeter_list():
+    parse_decl('procedure f(int x in int y out) begin end procedure')
+   
+#def test_statement_in_procedure_declaration():
+#    assert False
+    
+

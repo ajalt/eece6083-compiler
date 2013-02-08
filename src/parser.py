@@ -94,20 +94,20 @@ class _Parser(object):
                 return syntaxtree.FalseVal
             
         class InfixOperator(Symbol):
-            def __init__(self, op, precedence):
-                self.op = op
+            def __init__(self, id, precedence):
+                self.id = id
                 self.precedence = precedence
                 
             def infix(self, left_term):
-                return syntaxtree.BinaryOp(self.op, left_term, self.parser.expression(self.precedence))
+                return syntaxtree.BinaryOp(self.id, left_term, self.parser.expression(self.precedence))
             
         class PrefixOperator(Symbol):
-            def __init__(self, op, precedence):
-                self.op = op
+            def __init__(self, id, precedence):
+                self.id = id
                 self.precedence = precedence
                 
             def prefix(self):
-                return syntaxtree.UnaryOp(self.op, self.parser.expression(self.precedence))
+                return syntaxtree.UnaryOp(self.id, self.parser.expression(self.precedence))
             
         class Minus(InfixOperator):
             def __init__(self, infix_precedence, prefix_precedence):
@@ -196,25 +196,34 @@ class _Parser(object):
         self.token, self.next_token = next(self._token_iter)
         
     def match(self, token_type):
+        if self.next_token is None or self.next_token.type == tokens.EOF:
+            # If we see an unexpected EOF, return the last token in the stream
+            # with the start and end points set to the end of the line.
+            raise ParseError('Unexpected EOF found', self.token._replace(start=self.token.end))
+        
         self.advance_token()
 
-        if self.token is None:
-            raise ParseError('Unexpected EOF found', self.token)
         if self.token.type != token_type:
             raise ParseError('Expected %r, found %r' % (token_type, self.token.type), self.token)
     
     def parse(self):
+        # program
         try:
+            # progarm header
             self.match(tokens.PROGRAM)
             self.match(tokens.IDENTIFIER)
             name = self.token.token
             self.match(tokens.IS)
+            
+            # program body
             decls = self.declarations()
             self.match(tokens.BEGIN)
+            body = []
             #body = self.statements()
+            
             self.match(tokens.END)
             self.match(tokens.PROGRAM)
-            return syntaxtree.Program(name, decls, [])
+            return syntaxtree.Program(name, decls, body)
         except ParseError as err:
             print err
     
@@ -232,31 +241,70 @@ class _Parser(object):
     def declarations(self):
         declarations = []
         while self.next_token.type != tokens.BEGIN:
-            declarations.append(self.declaration())
+            try:
+                declarations.append(self.declaration())
+            except ParseError as err:
+                print err
             self.match(tokens.SEMICOLON)
         return declarations
             
     def declaration(self):
         self.advance_token()
-        try:
-            if self.token.type == tokens.PROCEDURE:
-                return self.procedure_declaration()
-            return self.variable_declaration()
-        except ParseError as err:
-            print err
-            
-        return 'ERROR'
-    
-    def procedure_declaration(self):
-        raise NotImplementedError
-    
-    def variable_declaration(self):
+        
+        # The global keyword can appear before both type of declarations, so we
+        # don't know which one we're looking at until after we consume 'global'.
+        
         if self.token.type == tokens.GLOBAL:
             is_global = True
             self.advance_token()
         else:
             is_global = False
             
+        if self.token.type == tokens.PROCEDURE:
+            return self.procedure_declaration(is_global)
+        return self.variable_declaration(is_global)
+    
+    def procedure_declaration(self, is_global):
+        # The current token is assumed to be 'PROCEDURE' when this function is called.
+        self.match(tokens.IDENTIFIER)
+        name = syntaxtree.Name(self.token.token)
+
+        # parameter list
+        self.match(tokens.OPENPAREN)
+        parameters = []
+        while self.next_token.type != tokens.CLOSEPAREN:
+            self.advance_token()
+            if self.token.type == tokens.GLOBAL:
+                is_global = True
+                self.advance_token()
+            else:
+                is_global = False
+            decl = self.variable_declaration(is_global)
+            self.advance_token()
+            if self.token.type not in (tokens.IN, tokens.OUT):
+                # we could resync here
+                raise ParseError('Direction missing from parameter specification', self.token)
+            direction = self.token.type
+            parameters.append(syntaxtree.Param(decl, direction))
+            if self.next_token.type == tokens.COMMA:
+                self.advance_token()
+        self.match(tokens.CLOSEPAREN)
+            
+        # local variable declarations
+        var_decls = self.declarations()
+        
+        self.match(tokens.BEGIN)
+        
+        #body = self.statmenets()
+        body = []
+        
+        self.match(tokens.END)
+        self.match(tokens.PROCEDURE)
+        
+        return syntaxtree.ProcDecl(is_global, name, parameters, var_decls, body)
+            
+            
+    def variable_declaration(self, is_global):
         if self.token.type in type_marks:
             type_mark = self.token.type
         else:
@@ -269,11 +317,13 @@ class _Parser(object):
             self.advance_token()
             self.match(tokens.NUMBER)
             array_size = self.token.token
-            self.advance_token()
+            self.match(tokens.CLOSEBRACKET)
         else:
             array_size = None
             
         return syntaxtree.VarDecl(is_global, type_mark, name, array_size)
+    
+
 
 
 def parse_tokens(token_stream):
@@ -285,7 +335,7 @@ if __name__ == '__main__':
         if isinstance(node, syntaxtree.BinaryOp):
             print '(',
             print_node(node.left)
-            print node.op,
+            print node.id,
             print_node(node.right)
             print ')',
         elif isinstance(node, syntaxtree.Num):
@@ -308,14 +358,18 @@ if __name__ == '__main__':
         elif isinstance(node, syntaxtree.VarDecl):
             print node
         
-    s = '''
-    program p is
-        float x;
-    begin
-    
-    end program
-    '''
-    parse = parse_tokens(scanner.tokenize_string((s)))
-    print parse
+    #s = '''
+    #program p is
+    #    float x;
+    #    string y[2];
+    #begin
+    #
+    #end program
+    #'''
+    #parse = parse_tokens(scanner.tokenize_string((s)))
+    #print parse
     #print_node(parse)
+    
+    s = 'procedure f(int x in,) begin end procedure'
+    print _Parser(scanner.tokenize_string(s)).declaration()
     
