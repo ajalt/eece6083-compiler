@@ -328,3 +328,68 @@ def test_multiple_else_statements():
     assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN, tokens.RETURN])
 
 # loop
+def test_minimal_loop_statement():
+    ast = parse_statement('for x := 1; 2; end for')
+    assert isinstance(ast, st.For)
+    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [])
+    
+def test_loop_with_one_body_statement():
+    ast = parse_statement('for x := 1; 2; return; end for')
+    assert isinstance(ast, st.For)
+    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [tokens.RETURN])
+    
+def test_loop_with_two_body_statements():
+    ast = parse_statement('for x := 1; 2; return; return; end for')
+    assert isinstance(ast, st.For)
+    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [tokens.RETURN, tokens.RETURN])
+    
+# Whole program tests
+def parse_program(src):
+    return parser.parse_tokens(scanner.tokenize_string(src))
+
+def check_program(src, expected):
+    ast = parse_program(src)
+    print 'Expected:', expected
+    print 'Got:     ', ast
+    
+    assert isinstance(ast, st.Program)
+    assert isinstance(ast.decls, list)
+    assert isinstance(ast.body, list)
+    assert ast == expected
+
+def test_minimal_program():
+    src = 'program p is begin end program'
+    expected = st.Program(st.Name('p'), [], [])
+    check_program(src, expected)
+    
+def test_program_with_one_declaration():
+    src ='program p is int x; begin end program'
+    expected = st.Program(st.Name('p'),
+                          [st.VarDecl(False, tokens.INT, st.Name('x'), None)], [])
+    check_program(src, expected)
+    
+    
+def test_program_with_two_declarations():
+    src ='program p is int x; int y; begin end program'
+    expected = st.Program(st.Name('p'),
+        [st.VarDecl(False, tokens.INT, st.Name('x'), None),
+         st.VarDecl(False, tokens.INT, st.Name('y'), None)], [])
+    check_program(src, expected)
+    
+def test_program_with_one_statement():
+    src ='program p is begin return; end program'
+    expected = st.Program(st.Name('p'), [], [tokens.RETURN])
+    check_program(src, expected)
+    
+def test_program_with_two_statements():
+    src ='program p is begin return; return; end program'
+    expected = st.Program(st.Name('p'), [], [tokens.RETURN, tokens.RETURN])
+    check_program(src, expected)
+    
+def test_program_with_two_declarations_and_two_statement():
+    src ='program p is int x; int y; begin return; return; end program'
+    expected = st.Program(st.Name('p'),
+        [st.VarDecl(False, tokens.INT, st.Name('x'), None),
+         st.VarDecl(False, tokens.INT, st.Name('y'), None)],
+        [tokens.RETURN, tokens.RETURN])
+    check_program(src, expected)

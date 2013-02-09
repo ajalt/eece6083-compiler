@@ -21,8 +21,6 @@ class ParseError(SyntaxError):
     def __repr__(self):
         return 'ParseError(msg=%r, token=%r)' % (self.msg, self.token)
 
-type_marks = set((tokens.INT, tokens.FLOAT, tokens.BOOL, tokens.STRING_KEYWORD))
-
 class _Parser(object):
     def __init__(self, token_stream):
         # tee will take care of caching the iterator so that we can get the lookahead
@@ -196,7 +194,7 @@ class _Parser(object):
         self.token, self.next_token = next(self._token_iter)
         
     def match(self, token_type):
-        if self.next_token is None or self.next_token.type == tokens.EOF:
+        if self.next_token is not None and self.next_token.type == tokens.EOF:
             # If we see an unexpected EOF, return the last token in the stream
             # with the start and end points set to the end of the line.
             raise ParseError('Unexpected EOF found', self.token._replace(start=self.token.end))
@@ -218,7 +216,7 @@ class _Parser(object):
             # progarm header
             self.match(tokens.PROGRAM)
             self.match(tokens.IDENTIFIER)
-            name = self.token.token
+            name = syntaxtree.Name(self.token.token)
             self.match(tokens.IS)
             
             # program body
@@ -296,7 +294,7 @@ class _Parser(object):
         
         # Body
         self.match(tokens.BEGIN)
-        body = self.statmenets()
+        body = self.statements()
         self.match(tokens.END)
         self.match(tokens.PROCEDURE)
         
@@ -305,7 +303,7 @@ class _Parser(object):
             
     def variable_declaration(self):
         is_global = self._consume_optional_token(tokens.GLOBAL)
-        if self.token.type in type_marks:
+        if self.token.type in (tokens.INT, tokens.FLOAT, tokens.BOOL, tokens.STRING_KEYWORD):
             type_mark = self.token.type
         else:
             raise ParseError('Expected type mark, found %s' % self.token.type, self.token)
@@ -335,7 +333,9 @@ class _Parser(object):
     
     def statement(self):
         self.advance_token()
-        # these calls could all inlined
+        # these calls can't all be inlined, since for_statement calls
+        # assignment_statement specificly, and there's no reason to make that a
+        # special case.
         if self.token.type == tokens.IF:
             return self.if_statement()
         if self.token.type == tokens.FOR:
@@ -369,18 +369,35 @@ class _Parser(object):
         self.match(tokens.IF)
         
         return syntaxtree.If(test, body, orelse)
+    
+    def for_statement(self):
+        # consume the 'for' token here, since all of the specific *_statement
+        # functions expect the current token to be the start of their production
+        self.advance_token()
+        assignment = self.assignment_statement()
+        self.match(tokens.SEMICOLON)
+        
+        test = self.expression()
+        self.match(tokens.SEMICOLON)
+        
+        body = self.statements()
+        self.match(tokens.END)
+        self.match(tokens.FOR)
+        
+        return syntaxtree.For(assignment, test, body)
+        
 
 def parse_tokens(token_stream):
     return _Parser(token_stream).parse()
     
     
 if __name__ == '__main__':
-    def print_node(node):
+    def print_expression(node):
         if isinstance(node, syntaxtree.BinaryOp):
             print '(',
-            print_node(node.left)
+            print_expression(node.left)
             print node.id,
-            print_node(node.right)
+            print_expression(node.right)
             print ')',
         elif isinstance(node, syntaxtree.Num):
             print node.n,
@@ -389,18 +406,10 @@ if __name__ == '__main__':
         elif isinstance(node, syntaxtree.Call):
             print '%s(' % node.func.id,
             for arg in node.args:
-                print_node(arg)
+                print_expression(arg)
                 print ',',
             print ')',
-        elif isinstance(node, syntaxtree.Program):
-            print '(Program', node.name,
-            print_node(node.decls)
-            print_node(node.body)
-            print ')'
-        elif isinstance(node, list):
-            for n in node: print_node(n)
-        elif isinstance(node, syntaxtree.VarDecl):
-            print node
+
         
     #s = '''
     #program p is
@@ -412,8 +421,8 @@ if __name__ == '__main__':
     #'''
     #parse = parse_tokens(scanner.tokenize_string((s)))
     #print parse
-    #print_node(parse)
+    #print_expression(parse)
     
-    s = '1 + then'
+    s = '1 + 2'
     print _Parser(scanner.tokenize_string(s)).expression()
     
