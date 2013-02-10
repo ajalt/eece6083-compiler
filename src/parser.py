@@ -439,31 +439,32 @@ def parse_tokens(token_stream):
     
     
 if __name__ == '__main__':
+    import argparse
+
     def print_expression(node):
         if isinstance(node, syntaxtree.BinaryOp):
             print '(',
             print_expression(node.left)
-            print node.id,
+            print node.op,
             print_expression(node.right)
+            print ')',
+        if isinstance(node, syntaxtree.UnaryOp):
+            print '(',
+            print node.op,
+            print_expression(node.operand)
             print ')',
         elif isinstance(node, syntaxtree.Num):
             print node.n,
         elif isinstance(node, syntaxtree.Name):
             print node.id,
 
-        
-    #s = '''
-    #program p is
-    #    float x;
-    #    string y[2];
-    #begin
-    #
-    #end program
-    #'''
-    #parse = parse_tokens(scanner.tokenize_string((s)))
-    #print parse
-    #print_expression(parse)
+    argparser = argparse.ArgumentParser(description='Test the parser functionality. With the -e switch, treat the input as an expression to parse. Otherwise treat it as a filename to parse.')
     
-    s = '1 + 2'
-    print _Parser(scanner.tokenize_file('../test/test_program.src')).parse()
+    argparser.add_argument('filename_or_expression', help='the file to scan, or expression to test')
+    argparser.add_argument('-e', '--expression', action='store_true', help='parse an expression directly (make sure to surround the expression in quotes)')
+    args = argparser.parse_args()
+    if args.expression:
+        print_expression(_Parser(scanner.tokenize_string(args.filename_or_expression)).expression())
+    else:
+        print parse_tokens(scanner.tokenize_file(args.filename_or_expression))
     
