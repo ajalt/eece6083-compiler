@@ -55,8 +55,8 @@ def test_unary_not():
     
 def test_binary_ops():
     ops = {
-        'and':tokens.AND,
-        'or':tokens.OR,
+        '&': tokens.AND,
+        '|': tokens.OR,
         '+': tokens.PLUS,
         '-': tokens.MINUS,
         '*': tokens.MULTIPLY,
@@ -66,12 +66,13 @@ def test_binary_ops():
         '>': tokens.GT,
         '>=': tokens.GTE,
         '!=': tokens.NOTEQUAL,
-        '=': tokens.EQUAL,
+        '==': tokens.EQUAL,
     }
     
     for op, tok in ops.iteritems():
         yield check_binary_op, op, tok
         yield check_unmatched_binary_op, op
+        
 def check_binary_op(op, tok):
     ast = parse_ex('1 %s 2' % op)
     assert isinstance(ast, st.BinaryOp)

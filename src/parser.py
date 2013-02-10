@@ -445,5 +445,5 @@ if __name__ == '__main__':
     #print_expression(parse)
     
     s = '1 + 2'
-    print _Parser(scanner.tokenize_string(s)).expression()
+    print _Parser(scanner.tokenize_file('../test/test_program.src')).parse()
     

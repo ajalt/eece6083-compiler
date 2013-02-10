@@ -26,7 +26,6 @@ Token = collections.namedtuple('Token', ['type', 'token', 'start', 'end', 'linen
 legal_string_characters = string.letters + string.digits + " _,;:.'"
 
 token_map = {
-    ':': tokens.COLON,
     ';': tokens.SEMICOLON,
     ',': tokens.COMMA,
     '+': tokens.PLUS,
@@ -40,12 +39,12 @@ token_map = {
     '>': tokens.GT,
     '>=': tokens.GTE,
     '!=': tokens.NOTEQUAL,
-    '=': tokens.EQUAL,
+    '==': tokens.EQUAL,
     ':=': tokens.ASSIGN,
-    '{': tokens.OPENBRACE,
-    '}': tokens.CLOSEBRACE,
     '[': tokens.OPENBRACKET,
     ']': tokens.CLOSEBRACKET,
+    '&': tokens.AND,
+    '|': tokens.OR,
     'string': tokens.STRING_KEYWORD,
     'int': tokens.INT,
     'bool': tokens.BOOL,
@@ -56,10 +55,7 @@ token_map = {
     'if': tokens.IF,
     'then': tokens.THEN,
     'else': tokens.ELSE,
-    'case': tokens.CASE,
     'for': tokens.FOR,
-    'and': tokens.AND,
-    'or': tokens.OR,
     'not': tokens.NOT,
     'program': tokens.PROGRAM,
     'procedure': tokens.PROCEDURE,
@@ -87,24 +83,21 @@ def _tokenize_line(line, lineno=0):
             return
         if c.isspace(): # whitespace
             pass
-        elif c in ';,+-*/()={}[]': # unambiguous lexemes
+        elif c in ';,+-*/(){}[]&|': # single character lexemes
             yield Token(token_map[c], c, pos, pos, lineno, line)
-        elif c in '<>:': # ambiguous lexemes
+        elif c in '<>!=:': # ambiguous and two character lexemes
             try:
                 lexeme = line[pos:pos+2]
                 yield Token(token_map[lexeme], lexeme, pos, pos + len(lexeme) - 1, lineno, line)
                 pos += 1
             except KeyError:
-                yield Token(token_map[c], c, pos, pos, lineno, line)
-        elif c == '!': # NOTEQUAL
-            if line[pos:pos+2] == '!=':
-                yield Token(tokens.NOTEQUAL, '!=', pos, pos + 1, lineno, line)
-                pos += 1
-            else:
-                # If we're at the end of a line, the exclamation point itself is
-                # illegal, otherwise the character after it is illegal.
-                errorpos = pos if pos == length - 1 else pos + 1
-                yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[errorpos], errorpos, errorpos, lineno, line)
+                if c in '<>':
+                    yield Token(token_map[c], c, pos, pos, lineno, line)
+                else:
+                    # If we're at the end of a line, the first character is
+                    # illegal, otherwise the character after it is illegal.
+                    errorpos = pos if pos == length - 1 else pos + 1
+                    yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[errorpos], errorpos, errorpos, lineno, line)
         elif c.isalpha(): # identifiers
             startpos = pos
             pos = _advance_pos(line, pos, lambda c:c.isalnum()) # \w*
