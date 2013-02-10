@@ -38,11 +38,6 @@ def test_literal_true():
 def test_literal_false():
     assert parse_ex('false') == tokens.FALSE
 
-def test_call():
-    ast = parse_ex('func()')
-    assert isinstance(ast, st.Call)
-    assert ast == st.Call(func=st.Name(id='func'), args=[])
-    
 def test_unary_minus():
     ast = parse_ex('-1')
     assert isinstance(ast, st.UnaryOp)
@@ -116,29 +111,7 @@ def test_empty_subsrcipt():
 def test_unmatched_bracket():
     parse_ex('a[')    
     
-def test_call_with_no_args():
-    ast = parse_ex('f()')
-    assert isinstance(ast, st.Call)
-    assert ast == st.Call(st.Name('f'), [])
-    
-def test_call_with_one_arg():
-    ast = parse_ex('f(x)')
-    assert isinstance(ast, st.Call)
-    assert ast == st.Call(st.Name('f'), [st.Name('x')])
-    
-def test_call_with_two_args():
-    ast = parse_ex('f(1, 2)')
-    assert isinstance(ast, st.Call)
-    assert ast == st.Call(st.Name('f'), [st.Num('1'), st.Num('2')])
-    
-def test_nested_calls():
-    ast = parse_ex('f(g(x))')
-    print ast
-    assert isinstance(ast, st.Call)
-    assert isinstance(ast.args[0], st.Call)
-    assert ast == st.Call(st.Name('f'), [st.Call(st.Name('g'), [st.Name('x')])])
-    
-    
+
 # declaration tests
 
 def parse_decl(src):
@@ -313,6 +286,31 @@ def test_assignment_statement_with_expression_value():
 # return
 def test_return_statement():
     assert parse_statement('return') == tokens.RETURN
+    
+# call
+
+def test_call_with_no_args():
+    ast = parse_statement('f()')
+    assert isinstance(ast, st.Call)
+    assert ast == st.Call(st.Name('f'), [])
+    
+def test_call_with_one_arg():
+    ast = parse_statement('f(x)')
+    assert isinstance(ast, st.Call)
+    assert ast == st.Call(st.Name('f'), [st.Name('x')])
+    
+def test_call_with_two_args():
+    ast = parse_statement('f(1, 2)')
+    assert isinstance(ast, st.Call)
+    assert ast == st.Call(st.Name('f'), [st.Num('1'), st.Num('2')])
+    
+@raises(parser.ParseError)
+def test_nested_calls():
+    ast = parse_statement('f(g(x))')
+    print ast
+    assert isinstance(ast, st.Call)
+    assert isinstance(ast.args[0], st.Call)
+    assert ast == st.Call(st.Name('f'), [st.Call(st.Name('g'), [st.Name('x')])])
     
 # if
 def test_minimal_if_statement():

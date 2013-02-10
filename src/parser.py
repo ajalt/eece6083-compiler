@@ -121,6 +121,7 @@ class _Parser(object):
             
         class OpenParen(Symbol):
             def __init__(self, precedence):
+                self.id = tokens.OPENPAREN
                 self.precedence = precedence
                 
             def prefix(self):
@@ -129,20 +130,22 @@ class _Parser(object):
                 self.parser.match(tokens.CLOSEPAREN)
                 return exp
             
-            def infix(self, left_term):
-                # Function call
-                function_name = left_term
-                function_args = []
-                if self.parser.next_token.type != tokens.CLOSEPAREN:
-                    function_args.append(self.parser.expression())
-                    while self.parser.next_token.type == tokens.COMMA:
-                        self.parser.advance_token()
-                        function_args.append(self.parser.expression())
-                self.parser.match(tokens.CLOSEPAREN)
-                return syntaxtree.Call(function_name, function_args)
+            # Function calls are no longer allowed inside statements.
+            #def infix(self, left_term):
+            #    # Function call
+            #    function_name = left_term
+            #    function_args = []
+            #    if self.parser.next_token.type != tokens.CLOSEPAREN:
+            #        function_args.append(self.parser.expression())
+            #        while self.parser.next_token.type == tokens.COMMA:
+            #            self.parser.advance_token()
+            #            function_args.append(self.parser.expression())
+            #    self.parser.match(tokens.CLOSEPAREN)
+            #    return syntaxtree.Call(function_name, function_args)
                
         class OpenBracket(Symbol):
             def __init__(self, precedence):
+                self.id = tokens.OPENBRACKET
                 self.precedence = precedence
                 
             def infix(self, left_term):
@@ -353,7 +356,24 @@ class _Parser(object):
             return self.for_statement()
         if self.token.type == tokens.RETURN:
             return tokens.RETURN
-        return self.assignment_statement()
+        if self.token.type == tokens.IDENTIFIER:
+            if self.next_token.type == tokens.ASSIGN:
+                return self.assignment_statement()
+            if self.next_token.type == tokens.OPENPAREN:
+                return self.procedure_call()
+        raise ParseError('Invalid character %r in statement' % self.token.token, self.token)
+    
+    def procedure_call(self):
+        function_name = syntaxtree.Name(self.token.token)
+        self.match(tokens.OPENPAREN)
+        function_args = []
+        if self.next_token.type != tokens.CLOSEPAREN:
+            function_args.append(self.expression())
+            while self.next_token.type == tokens.COMMA:
+                self.advance_token()
+                function_args.append(self.expression())
+        self.match(tokens.CLOSEPAREN)
+        return syntaxtree.Call(function_name, function_args)
     
     def assignment_statement(self):
         if self.token.type != tokens.IDENTIFIER:
