@@ -246,7 +246,16 @@ def test_procecure_declaration_with_two_parameters():
          st.Param(st.VarDecl(False, tokens.INT, st.Name('y'), None), tokens.OUT)], [], [])
     check_procedure_declaraiton(src, expected)
     
-
+def test_one_statement_in_procedure_declaration():
+    src = 'procedure f() begin return; end procedure'
+    expected = st.ProcDecl(False, st.Name('f'), [], [], [tokens.RETURN])
+    check_procedure_declaraiton(src, expected)
+    
+def test_two_statements_in_procedure_declaration():
+    src = 'procedure f() begin return; return; end procedure'
+    expected = st.ProcDecl(False, st.Name('f'), [], [], [tokens.RETURN, tokens.RETURN])
+    check_procedure_declaraiton(src, expected)
+    
 @raises(parser.ParseError)
 def test_missing_first_procedure_keyword():
     parse_decl('f() begin end procedure')
@@ -283,10 +292,8 @@ def test_trailing_comma_in_parameter_list():
 def test_missing_comma_in_paremeter_list():
     parse_decl('procedure f(int x in int y out) begin end procedure')
    
-#def test_statement_in_procedure_declaration():
-#    assert False
-    
-# Statement tests.
+   
+# statement tests
 
 def parse_statement(src):
     return get_parser(src).statement()
@@ -308,41 +315,81 @@ def test_return_statement():
     
 # if
 def test_minimal_if_statement():
-    ast = parse_statement('if 1 then return; end if')
+    ast = parse_statement('if (1) then return; end if')
     assert isinstance(ast, st.If)
     assert ast == st.If(st.Num('1'), [tokens.RETURN], [])
     
 def test_if_else():
-    ast = parse_statement('if 1 then return; else return; end if')
+    ast = parse_statement('if (1) then return; else return; end if')
     assert isinstance(ast, st.If)
     assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN])
     
 def test_multiple_if_statements():
-    ast = parse_statement('if 1 then return; return; end if')
+    ast = parse_statement('if (1) then return; return; end if')
     assert isinstance(ast, st.If)
     assert ast == st.If(st.Num('1'), [tokens.RETURN, tokens.RETURN], [])
     
 def test_multiple_else_statements():
-    ast = parse_statement('if 1 then return; else return; return; end if')
+    ast = parse_statement('if (1) then return; else return; return; end if')
     assert isinstance(ast, st.If)
     assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN, tokens.RETURN])
+    
+@raises(parser.ParseError)
+def test_missing_parenthesis_in_if_statement():
+    parse_statement('if 1 then return; end if')
+    
+@raises(parser.ParseError)
+def test_missing_then_in_if_statement():
+    parse_statement('if (1) return; end if')
+    
+@raises(parser.ParseError)
+def test_missing_statement_in_if_statement():
+    parse_statement('if (1) then end if')
+    
+@raises(parser.ParseError)
+def test_missing_statement_in_else_statement():
+    parse_statement('if (1) then return; else end if')
 
 # loop
 def test_minimal_loop_statement():
-    ast = parse_statement('for x := 1; 2; end for')
+    ast = parse_statement('for (x := 1; 2) end for')
     assert isinstance(ast, st.For)
     assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [])
     
 def test_loop_with_one_body_statement():
-    ast = parse_statement('for x := 1; 2; return; end for')
+    ast = parse_statement('for (x := 1; 2) return; end for')
     assert isinstance(ast, st.For)
     assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [tokens.RETURN])
     
 def test_loop_with_two_body_statements():
-    ast = parse_statement('for x := 1; 2; return; return; end for')
+    ast = parse_statement('for (x := 1; 2) return; return; end for')
     assert isinstance(ast, st.For)
     assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [tokens.RETURN, tokens.RETURN])
     
+@raises(parser.ParseError)
+def test_loop_missing_assignment():
+    parse_statement('for (;2) end for')
+    
+@raises(parser.ParseError)
+def test_loop_missing_test_exression():
+    parse_statement('for (x := 1;) end for')
+    
+@raises(parser.ParseError)
+def test_loop_missing_semicolon_after_assignment():
+    parse_statement('for (x := 1 2) end for')
+    
+@raises(parser.ParseError)
+def test_loop_missing_parentesis():
+    parse_statement('for x := 1; 2 end for')
+    
+@raises(parser.ParseError)
+def test_loop_missing_end():
+    parse_statement('for (x := 1; 2) for')
+    
+@raises(parser.ParseError)
+def test_loop_missing_semicolon_after_statement():
+    parse_statement('for (x := 1; 2) return return end for')
+
 # Whole program tests
 def parse_program(src):
     return parser.parse_tokens(scanner.tokenize_string(src))
@@ -367,7 +414,6 @@ def test_program_with_one_declaration():
     expected = st.Program(st.Name('p'),
                           [st.VarDecl(False, tokens.INT, st.Name('x'), None)], [])
     check_program(src, expected)
-    
     
 def test_program_with_two_declarations():
     src ='program p is int x; int y; begin end program'

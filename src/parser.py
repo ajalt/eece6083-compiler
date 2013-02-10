@@ -1,10 +1,18 @@
+'''Create an Abstract Syntax Tree from an iterable of tokens.
+
+The types of nodes in the tree are defined in the syntaxtree module. The parser
+prints errors to stdout, and has several resync points to continue parsing if it
+encounters a syntax error. however, once parsing is finished, if any errors were
+encountered, a ParseFailedError is raised, indicating that the source could not
+be parsed.'''
+
 import itertools
 
 import tokens
 import scanner
 import syntaxtree
 
-class ParseError(SyntaxError):
+class ParseError(Exception):
     def __init__(self, msg, token):
         self.msg = msg
         self.token = token
@@ -20,6 +28,8 @@ class ParseError(SyntaxError):
     
     def __repr__(self):
         return 'ParseError(msg=%r, token=%r)' % (self.msg, self.token)
+    
+class ParseFailedError(Exception): pass
 
 class _Parser(object):
     def __init__(self, token_stream):
@@ -160,35 +170,35 @@ class _Parser(object):
             tokens.COMMA: Symbol(tokens.COMMA),
             tokens.CLOSEBRACKET: Symbol(tokens.CLOSEBRACKET),
             tokens.OR: InfixOperator(tokens.OR, 1),
-            tokens.AND: InfixOperator(tokens.AND, 2),
-            tokens.NOT: PrefixOperator(tokens.NOT, 3),
-            tokens.PLUS: InfixOperator(tokens.PLUS, 4),
-            tokens.MINUS: Minus(4, 7),
-            tokens.LT: InfixOperator(tokens.LT, 5),
-            tokens.GTE: InfixOperator(tokens.GTE, 5),
-            tokens.LTE: InfixOperator(tokens.LTE, 5),
-            tokens.GT: InfixOperator(tokens.GT, 5),
-            tokens.EQUAL: InfixOperator(tokens.EQUAL, 5),
-            tokens.NOTEQUAL: InfixOperator(tokens.NOTEQUAL, 5),
-            tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 6),
-            tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 6),
-            tokens.OPENPAREN: OpenParen(7),
-            tokens.OPENBRACKET: OpenBracket(7),
+            tokens.AND: InfixOperator(tokens.AND, 1),
+            tokens.NOT: PrefixOperator(tokens.NOT, 1),
+            tokens.PLUS: InfixOperator(tokens.PLUS, 2),
+            tokens.MINUS: Minus(2, 7),
+            tokens.LT: InfixOperator(tokens.LT, 3),
+            tokens.GTE: InfixOperator(tokens.GTE, 3),
+            tokens.LTE: InfixOperator(tokens.LTE, 3),
+            tokens.GT: InfixOperator(tokens.GT, 3),
+            tokens.EQUAL: InfixOperator(tokens.EQUAL, 3),
+            tokens.NOTEQUAL: InfixOperator(tokens.NOTEQUAL, 3),
+            tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 4),
+            tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 4),
+            tokens.OPENPAREN: OpenParen(5),
+            tokens.OPENBRACKET: OpenBracket(5),
         })
                 
     
-    def _find_symbol(self, token):
+    def get_symbol(self, token):
         if token.type in (tokens.NUMBER, tokens.IDENTIFIER, tokens.STRING):
             return self.expression_operators[token.type](token.token)
         return self.expression_operators[token.type]
     
     @property
     def current_symbol(self):
-        return self._find_symbol(self.token)
+        return self.get_symbol(self.token)
     
     @property
     def next_symbol(self):
-        return self._find_symbol(self.next_token)
+        return self.get_symbol(self.next_token)
         
     def advance_token(self):
         self.token, self.next_token = next(self._token_iter)
@@ -322,6 +332,7 @@ class _Parser(object):
         return syntaxtree.VarDecl(is_global, type_mark, name, array_size)
     
     def statements(self):
+        '''Return a list of zero or more statement nodes'''
         statements = []
         while self.next_token.type not in (tokens.END, tokens.ELSE):
             try:
@@ -354,14 +365,24 @@ class _Parser(object):
         return syntaxtree.Assign(target, value)
     
     def if_statement(self):
+        self.match(tokens.OPENPAREN)
         test = self.expression()
+        self.match(tokens.CLOSEPAREN)
         
         self.match(tokens.THEN)
-        body = self.statements()
+        
+        # at least one statement is required in the then clause
+        body = [self.statement()]
+        self.match(tokens.SEMICOLON)
+        body += self.statements()
         
         if self.next_token.type == tokens.ELSE:
             self.advance_token()
-            orelse = self.statements()
+            
+            # one or more statements are required in the else clause as well
+            orelse = [self.statement()]
+            self.match(tokens.SEMICOLON)
+            orelse += self.statements()
         else:
             orelse = []
             
@@ -371,14 +392,15 @@ class _Parser(object):
         return syntaxtree.If(test, body, orelse)
     
     def for_statement(self):
-        # consume the 'for' token here, since all of the specific *_statement
+        self.match(tokens.OPENPAREN)
+        # advance past the '(' token here, since all of the specific *_statement
         # functions expect the current token to be the start of their production
         self.advance_token()
         assignment = self.assignment_statement()
         self.match(tokens.SEMICOLON)
         
         test = self.expression()
-        self.match(tokens.SEMICOLON)
+        self.match(tokens.CLOSEPAREN)
         
         body = self.statements()
         self.match(tokens.END)
@@ -388,6 +410,11 @@ class _Parser(object):
         
 
 def parse_tokens(token_stream):
+    '''Return an ast created from an iterable of tokens.
+    
+    A node of type syntaxtree.Program will be returned, or a ValueError will be
+    raised in the case of a syntax error in the input tokens.
+    '''
     return _Parser(token_stream).parse()
     
     
@@ -403,12 +430,6 @@ if __name__ == '__main__':
             print node.n,
         elif isinstance(node, syntaxtree.Name):
             print node.id,
-        elif isinstance(node, syntaxtree.Call):
-            print '%s(' % node.func.id,
-            for arg in node.args:
-                print_expression(arg)
-                print ',',
-            print ')',
 
         
     #s = '''
