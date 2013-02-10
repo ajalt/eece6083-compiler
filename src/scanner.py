@@ -1,7 +1,7 @@
 '''Scan a string or file and generate language tokens.
 
-tokenize_line and tokenize_file are both generators that generate tokens in the
-form of tuples. Both functions generate namedtuples with the following members:
+Functions tokenize_string and tokenize_file are both generators that generate
+namedtuples with the following members:
 
     the token type (a string, see tokens.py)
     the token/lexeme (a string)
@@ -9,8 +9,6 @@ form of tuples. Both functions generate namedtuples with the following members:
     the ending position of the token in the line (an int)
     the number of the line in the file in which the token occurs (an int)
     the full original line (a string)
-
-tokenize_line will always generate tokens with the line number member set to 0.
 
 Scanning does not stop when a syntax error is encountered. Instead, errors are
 reported by yielding a token of type ERROR. In these tokens, the token string is
@@ -73,18 +71,13 @@ token_map = {
     'is': tokens.IS
 }
 
-def tokenize_line(line, lineno=0):
-    '''Generate tokens from a single line of text.
-    
-    The generator produces 6-tuples with the following members:
-    
-        the token type (a string, see tokens.py)
-        the token/lexeme (a string)
-        the starting position of the token in the line (an int)
-        the ending position of the token in the line (an int)
-        the number of the line in the file in which the token occurs (an int, default=0)
-        the full original line (a string)
-    '''
+def _advance_pos(line, pos, test):
+    # Return the index of the first character that fails the test function and is not '_'
+    while pos < len(line) and (line[pos]  == '_' or test(line[pos])):
+        pos += 1
+    return pos
+
+def _tokenize_line(line, lineno=0):
     pos = 0
     length = len(line)
     
@@ -145,11 +138,24 @@ def tokenize_line(line, lineno=0):
         
 def _tokenize_file_obj(file_):
     for lineno, line in enumerate(file_):
-        for token in tokenize_line(line, lineno):
+        for token in _tokenize_line(line, lineno):
             yield token
     yield Token(tokens.EOF, 'EOF', 0, 0, lineno, '')
     
 def tokenize_string(string_):
+    '''Generate tokens from a multiline string.
+    
+    The generator produces 6-tuples with the following members:
+    
+        the token type (a string, see tokens.py)
+        the token/lexeme (a string)
+        the starting position of the token in the line (an int)
+        the ending position of the token in the line (an int)
+        the number of the line in the file in which the token occurs (an int)
+        the full original line (a string)
+        
+    The final token generated will be 'EOF'
+    '''
     return _tokenize_file_obj(StringIO.StringIO(string_))
         
     
@@ -164,6 +170,8 @@ def tokenize_file(filename):
         the ending position of the token in the line (an int)
         the number of the line in the file in which the token occurs (an int)
         the full original line (a string)
+
+    The final token generated will be 'EOF'
     '''
     with open(filename) as file:
         # We can't just return the generator created in _tokenize_file_obj here,
@@ -172,13 +180,6 @@ def tokenize_file(filename):
         for token in _tokenize_file_obj(file):
             yield token
             
-def _advance_pos(line, pos, test):
-    # Return the index of the first character that fails the test function
-    while pos < len(line) and (line[pos]  == '_' or test(line[pos])):
-        pos += 1
-    return pos
-
-    
 if __name__ == '__main__':
     import argparse
     

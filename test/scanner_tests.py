@@ -7,7 +7,7 @@ from src import scanner
 from src import tokens
 
 def _get_single_token(line):
-    return next(scanner.tokenize_line(line))
+    return next(scanner._tokenize_line(line))
 
 def test_individual_tokens():
     for line, token_type in scanner.token_map.iteritems():
@@ -102,7 +102,7 @@ def check_for_stop_iteration(line):
 def test_full_line():
     # end the line with an unmatched quote to get an error token
     lexemes = list(s + ' ' for s in scanner.token_map) + ['2', '"string"', '"']
-    result = list(scanner.tokenize_line(''.join(lexemes)))
+    result = list(scanner._tokenize_line(''.join(lexemes)))
     print 'Result len:', len(result), 'Expected:', len(lexemes)
     for res, exp in itertools.izip_longest(result, lexemes):
         print res[:2], exp
