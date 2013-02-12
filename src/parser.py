@@ -5,6 +5,27 @@ prints errors to stdout, and has several resync points to continue parsing if it
 encounters a syntax error. however, once parsing is finished, if any errors were
 encountered, a ParseFailedError is raised, indicating that the source could not
 be parsed.'''
+# The parser uses a combination of recursive descent and top-down operator
+# precedence. This is a similar strategy to gcc's c and c++ parsers, although
+# they use precedence climbing instead of TDOP.
+#
+# Statements all use straight-forward recursive descent on the BNF, which was
+# rewritten to remove left-recursion.
+# 
+# The TDOP section of the parser is used for all expressions, and is based on
+# the following paper:
+#
+# Vaughan R. Pratt. 1973. Top down operator precedence. In Proceedings of the 1st
+# annual ACM SIGACT-SIGPLAN symposium on Principles of programming languages (POPL
+# '73). ACM, New York
+#
+# The expression() method implements Pratt's core state machine, although it
+# takes advantage of Python's first-order classes to make the implementation
+# cleaner. Pratt's led functions correspond to infix() methods on symbol
+# classes, and his nud functions correspond to prefix() methods. The lbp has
+# been renamed precedence. The expression_operators map takes advantage of
+# autovivification (the __missing__ method of dicts) to remove the need to define
+# all possible terminal symbols that can occur in an expression.
 
 import itertools
 
@@ -50,42 +71,27 @@ class _Parser(object):
             precedence = 0
             parser = self
             
-            def __init__(self, id):
-                self.id = id
-            
-            def prefix(self):
-                raise ParseError("Unexpected '%s' in expression" % self.id, self.parser.token)
-            
-            def infix(self, left_term):
-                raise ParseError("Unexpected '%s' in expression" % self.id, self.parser.token)
-
-            
-        class Number(Symbol):
-            precedence = 0
-            
             def __init__(self, value):
                 self.value = value
             
             def prefix(self):
+                raise ParseError("Unexpected '%s' in expression" % self.value, self.parser.token)
+            
+            def infix(self, left_term):
+                raise ParseError("Unexpected '%s' in expression" % self.value, self.parser.token)
+
+            
+        class Number(Symbol):
+            def prefix(self):
                 return syntaxtree.Num(self.value)
             
         class Identifier(Symbol):
-            precedence = 0
-            
-            def __init__(self, id):
-                self.id = id
-            
             def prefix(self):
-                return syntaxtree.Name(self.id)
+                return syntaxtree.Name(self.value)
 
         class String(Symbol):
-            precedence = 0
-
-            def __init__(self, s):
-                self.s = s
-
             def prefix(self):
-                return syntaxtree.Str(self.s)
+                return syntaxtree.Str(self.value)
             
         class TrueVal(Symbol):
             def prefix(self):
@@ -95,25 +101,23 @@ class _Parser(object):
             def prefix(self):
                 return tokens.FALSE
             
-        class InfixOperator(Symbol):
-            def __init__(self, id, precedence):
-                self.id = id
+        class Operator(Symbol):
+            def __init__(self, value, precedence):
+                self.value = value
                 self.precedence = precedence
-                
-            def infix(self, left_term):
-                return syntaxtree.BinaryOp(self.id, left_term, self.parser.expression(self.precedence))
             
-        class PrefixOperator(Symbol):
-            def __init__(self, id, precedence):
-                self.id = id
-                self.precedence = precedence
-                
+        class InfixOperator(Operator):
+            def infix(self, left_term):
+                return syntaxtree.BinaryOp(self.value, left_term, self.parser.expression(self.precedence))
+            
+        class PrefixOperator(Operator):
             def prefix(self):
-                return syntaxtree.UnaryOp(self.id, self.parser.expression(self.precedence))
+                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.precedence))
             
         class Minus(InfixOperator):
             def __init__(self, infix_precedence, prefix_precedence):
-                super(Minus, self).__init__(tokens.MINUS, infix_precedence)
+                self.value = tokens.MINUS
+                self.precedence = infix_precedence
                 self.prefix_precedence = prefix_precedence
                 
             def prefix(self):
@@ -121,7 +125,7 @@ class _Parser(object):
             
         class OpenParen(Symbol):
             def __init__(self, precedence):
-                self.id = tokens.OPENPAREN
+                self.value = tokens.OPENPAREN
                 self.precedence = precedence
                 
             def prefix(self):
@@ -145,7 +149,7 @@ class _Parser(object):
                
         class OpenBracket(Symbol):
             def __init__(self, precedence):
-                self.id = tokens.OPENBRACKET
+                super(OpenBracket, self).__init__(tokens.OPENBRACKET)
                 self.precedence = precedence
                 
             def infix(self, left_term):
@@ -207,6 +211,7 @@ class _Parser(object):
         self.token, self.next_token = next(self._token_iter)
         
     def match(self, token_type):
+        '''Advance the current token and check that it is the correct type'''
         if self.next_token is not None and self.next_token.type == tokens.EOF:
             # If we see an unexpected EOF, return the last token in the stream
             # with the start and end points set to the end of the line.
@@ -224,9 +229,10 @@ class _Parser(object):
         return False
     
     def parse(self):
+        '''Parse a complete program and return an ast.'''
         # program
         try:
-            # progarm header
+            # program header
             self.match(tokens.PROGRAM)
             self.match(tokens.IDENTIFIER)
             name = syntaxtree.Name(self.token.token)
@@ -243,12 +249,15 @@ class _Parser(object):
         
         except ParseError as err:
             print err
+            raise ParseFailedError('Errors encountered when parsing')
     
     def expression(self, precedence=0):
         self.advance_token()
         
         left_term = self.current_symbol.prefix()
         
+        # This will left-associate operators of the same precedence, or return a
+        # sub-expression to operators of higher precedence.
         while precedence < self.next_symbol.precedence:
             self.advance_token()
             left_term = self.current_symbol.infix(left_term)
@@ -256,7 +265,10 @@ class _Parser(object):
         return left_term
     
     def declarations(self):
+        ''' Return a list of zero or more declaration nodes.'''
+        # This handles the rule ::= (<declaration>)* by returning a possibly empty list.
         declarations = []
+        # BEGIN is the follow-set for multiple declarations
         while self.next_token.type != tokens.BEGIN:
             try:
                 declarations.append(self.declaration())
@@ -276,7 +288,7 @@ class _Parser(object):
         decl = self.variable_declaration()
         self.advance_token()
         if self.token.type not in (tokens.IN, tokens.OUT):
-            # We could resync here.
+            # We could resync here after the comma.
             raise ParseError('Direction missing from parameter specification', self.token)
         direction = self.token.type
         return syntaxtree.Param(decl, direction)
@@ -348,7 +360,7 @@ class _Parser(object):
     def statement(self):
         self.advance_token()
         # these calls can't all be inlined, since for_statement calls
-        # assignment_statement specificly, and there's no reason to make that a
+        # assignment_statement specifically, and there's no reason to make that a
         # special case.
         if self.token.type == tokens.IF:
             return self.if_statement()
@@ -457,6 +469,10 @@ if __name__ == '__main__':
             print node.n,
         elif isinstance(node, syntaxtree.Name):
             print node.id,
+        elif node == tokens.TRUE:
+            print 'true',
+        elif node == tokens.FALSE:
+            print 'false',
 
     argparser = argparse.ArgumentParser(description='Test the parser functionality. With the -e switch, treat the input as an expression to parse. Otherwise treat it as a filename to parse.')
     
@@ -466,5 +482,8 @@ if __name__ == '__main__':
     if args.expression:
         print_expression(_Parser(scanner.tokenize_string(args.filename_or_expression)).expression())
     else:
-        print parse_tokens(scanner.tokenize_file(args.filename_or_expression))
+        try:
+            print parse_tokens(scanner.tokenize_file(args.filename_or_expression))
+        except ParseFailedError:
+            pass
     
