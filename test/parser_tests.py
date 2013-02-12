@@ -438,3 +438,6 @@ def test_program_with_two_declarations_and_two_statement():
          st.VarDecl(False, tokens.INT, st.Name('y'), None)],
         [tokens.RETURN, tokens.RETURN])
     check_program(src, expected)
+    
+def test_parsing_file():
+    parser._Parser(scanner.tokenize_file(os.path.join('test', 'test_program.src'))).parse()
