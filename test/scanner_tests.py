@@ -65,7 +65,9 @@ def check_string_token(line):
 def test_for_error_tokens():
     for line in ('"@"', # illegal character in string
                  '"', # EOL in string
-                 '!', # '!' at EOL
+                 '!', # two-character literals missing second character
+                 ':',
+                 '=',
                  '@', # illegal character
                  '.', # dot by itself shouldn't be a number
                  ):
