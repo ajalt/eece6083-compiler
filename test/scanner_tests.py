@@ -72,7 +72,7 @@ def test_for_error_tokens():
         yield check_for_error, line
         
 def test_for_illegal_character_after_exclamation_point():
-    return check_for_error('!*', 1)
+    return check_for_error('!*', 0, 0)
 
 def test_for_underscore_at_beginnig_of_number():
     return check_for_error('_2', end=0)

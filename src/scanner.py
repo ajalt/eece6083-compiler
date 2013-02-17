@@ -94,10 +94,7 @@ def _tokenize_line(line, lineno=0):
                 if c in '<>':
                     yield Token(token_map[c], c, pos, pos, lineno, line)
                 else:
-                    # If we're at the end of a line, the first character is
-                    # illegal, otherwise the character after it is illegal.
-                    errorpos = pos if pos == length - 1 else pos + 1
-                    yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[errorpos], errorpos, errorpos, lineno, line)
+                    yield Token(tokens.ERROR, "Illegal character '%s' encountered" % line[pos], pos, pos, lineno, line)
         elif c.isalpha(): # identifiers
             startpos = pos
             pos = _advance_pos(line, pos, lambda c:c.isalnum()) # \w*

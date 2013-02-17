@@ -28,6 +28,7 @@ be parsed.'''
 # all possible terminal symbols that can occur in an expression.
 
 import itertools
+import contextlib
 
 import tokens
 import scanner
@@ -54,6 +55,8 @@ class ParseFailedError(Exception): pass
 
 class _Parser(object):
     def __init__(self, token_stream):
+        self.error_encountered = False
+        
         # tee will take care of caching the iterator so that we can get the lookahead
         self.token = None
         self.next_token = None
@@ -197,6 +200,8 @@ class _Parser(object):
     def get_symbol(self, token):
         if token.type in (tokens.NUMBER, tokens.IDENTIFIER, tokens.STRING):
             return self.expression_operators[token.type](token.token)
+        if self.token.type == tokens.ERROR:
+            raise ParseError(self.token.token, self.token)
         return self.expression_operators[token.type]
     
     @property
@@ -210,7 +215,7 @@ class _Parser(object):
     def advance_token(self):
         self.token, self.next_token = next(self._token_iter)
         
-    def match(self, token_type):
+    def match(self, token_type, custom_exception=None):
         '''Advance the current token and check that it is the correct type'''
         if self.next_token is not None and self.next_token.type == tokens.EOF:
             # If we see an unexpected EOF, return the last token in the stream
@@ -218,8 +223,13 @@ class _Parser(object):
             raise ParseError('Unexpected EOF found', self.token._replace(start=self.token.end))
         
         self.advance_token()
+        
+        if self.token.type == tokens.ERROR:
+            raise ParseError(self.token.token, self.token)
 
         if self.token.type != token_type:
+            if custom_exception is not None:
+                raise custom_exception
             raise ParseError('Expected %r, found %r' % (token_type, self.token.type), self.token)
     
     def _consume_optional_token(self, tok):
@@ -227,6 +237,26 @@ class _Parser(object):
             self.advance_token()
             return True
         return False
+    
+    @contextlib.contextmanager
+    def resync_point(self, followset):
+        # Append EOF to the followset so that we don't go off the end of the
+        # file trying to find a token that matches.
+        if isinstance(followset, basestring):
+            followset = [followset, tokens.EOF]
+        else:
+            followset.append(tokens.EOF)
+            
+        try:
+            yield
+        except ParseError as err:
+            print err
+            self.error_encountered = True
+            while self.next_token.type not in followset:
+                self.advance_token()
+                if self.token.type == tokens.ERROR:
+                    # Print the error and keep going.
+                    print ParseError(self.token.token, self.token)
     
     def parse(self):
         '''Parse a complete program and return an ast.'''
@@ -245,8 +275,10 @@ class _Parser(object):
             self.match(tokens.END)
             self.match(tokens.PROGRAM)
             
+            if self.error_encountered:
+                raise ParseFailedError('Errors encountered when parsing')
+            
             return syntaxtree.Program(name, decls, body)
-        
         except ParseError as err:
             print err
             raise ParseFailedError('Errors encountered when parsing')
@@ -269,12 +301,11 @@ class _Parser(object):
         # This handles the rule ::= (<declaration>)* by returning a possibly empty list.
         declarations = []
         # BEGIN is the follow-set for multiple declarations
-        while self.next_token.type != tokens.BEGIN:
-            try:
+        while self.next_token.type not in (tokens.BEGIN, tokens.EOF):
+            with self.resync_point(tokens.SEMICOLON):
                 declarations.append(self.declaration())
-            except ParseError as err:
-                print err
             self.match(tokens.SEMICOLON)
+            
         return declarations
             
     def declaration(self):
@@ -325,7 +356,6 @@ class _Parser(object):
         
         return syntaxtree.ProcDecl(is_global, name, parameters, var_decls, body)
             
-            
     def variable_declaration(self):
         is_global = self._consume_optional_token(tokens.GLOBAL)
         if self.token.type in (tokens.INT, tokens.FLOAT, tokens.BOOL, tokens.STRING_KEYWORD):
@@ -349,12 +379,14 @@ class _Parser(object):
     def statements(self):
         '''Return a list of zero or more statement nodes'''
         statements = []
+
         while self.next_token.type not in (tokens.END, tokens.ELSE):
-            try:
+            with self.resync_point(tokens.SEMICOLON):
                 statements.append(self.statement())
-            except ParseError as err:
-                print err
-            self.match(tokens.SEMICOLON)
+            self.match(tokens.SEMICOLON,
+                       ParseError('Missing semicolon after statement',
+                                  self.token._replace(start=self.token.end+1,
+                                                      end=self.token.end+1)))
         return statements
     
     def statement(self):
@@ -373,7 +405,11 @@ class _Parser(object):
                 return self.assignment_statement()
             if self.next_token.type == tokens.OPENPAREN:
                 return self.procedure_call()
-        raise ParseError('Invalid character %r in statement' % self.token.token, self.token)
+            if self.next_token.type == tokens.ERROR:
+                raise ParseError(self.next_token.token, self.next_token)
+        if self.token.type == tokens.ERROR:
+            raise ParseError(self.token.token, self.token)
+        raise ParseError('Invalid %r in statement' % self.token.token, self.token)
     
     def procedure_call(self):
         function_name = syntaxtree.Name(self.token.token)
@@ -403,20 +439,23 @@ class _Parser(object):
         
         self.match(tokens.THEN)
         
-        # at least one statement is required in the then clause
-        body = [self.statement()]
-        self.match(tokens.SEMICOLON)
-        body += self.statements()
+        # At least one statement is required in the then clause.
+        with self.resync_point(tokens.SEMICOLON):
+            body = self.statements()
+        if not body:
+            raise ParseError('Missing body of if clause', self.token)
         
         if self.next_token.type == tokens.ELSE:
             self.advance_token()
             
-            # one or more statements are required in the else clause as well
-            orelse = [self.statement()]
-            self.match(tokens.SEMICOLON)
-            orelse += self.statements()
+            # One or more statements are required in the else clause as well.
+            with self.resync_point(tokens.SEMICOLON):
+                orelse = self.statements()
+            if not orelse:
+                raise ParseError('Missing body of else clause', self.token)
         else:
             orelse = []
+
             
         self.match(tokens.END)
         self.match(tokens.IF)
@@ -460,7 +499,7 @@ if __name__ == '__main__':
             print node.op,
             print_expression(node.right)
             print ')',
-        if isinstance(node, syntaxtree.UnaryOp):
+        elif isinstance(node, syntaxtree.UnaryOp):
             print '(',
             print node.op,
             print_expression(node.operand)
@@ -473,6 +512,15 @@ if __name__ == '__main__':
             print 'true',
         elif node == tokens.FALSE:
             print 'false',
+        elif isinstance(node, syntaxtree.Subscript):
+            print_expression(node.name),
+            print '[',
+            print_expression(node.index)
+            print ']',
+        elif isinstance(node, syntaxtree.Str):
+            print node.s,
+        else:
+            print '?',
 
     argparser = argparse.ArgumentParser(description='Test the parser functionality. With the -e switch, treat the input as an expression to parse. Otherwise treat it as a filename to parse.')
     
@@ -484,6 +532,6 @@ if __name__ == '__main__':
     else:
         try:
             print parse_tokens(scanner.tokenize_file(args.filename_or_expression))
-        except ParseFailedError:
-            pass
+        except ParseFailedError as err:
+            print err
     

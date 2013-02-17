@@ -370,7 +370,7 @@ def test_loop_missing_assignment():
     parse_statement('for (;2) end for')
     
 @raises(parser.ParseError)
-def test_loop_missing_test_exression():
+def test_loop_missing_test_expression():
     parse_statement('for (x := 1;) end for')
     
 @raises(parser.ParseError)
@@ -388,7 +388,29 @@ def test_loop_missing_end():
 @raises(parser.ParseError)
 def test_loop_missing_semicolon_after_statement():
     parse_statement('for (x := 1; 2) return return end for')
-
+    
+# resync point tests
+def test_statements_resync_point_recovers_after_error():
+    p = get_parser('if(1) then s = + +; return; end if')
+    ast = p.statement()
+    expected = st.If(st.Num('1'), [tokens.RETURN], [])
+    print 'Expected:', expected
+    print 'Got:     ', ast
+    assert isinstance(ast, st.If)
+    assert p.error_encountered
+    assert ast == expected
+    
+def test_declarations_resync_point_recovers_after_error():
+    p = get_parser('procedure f() 1 1; int i; begin end procedure')
+    expected = st.ProcDecl(False, st.Name('f'), [],
+                           [st.VarDecl(False, tokens.INT, st.Name('i'), None)], [])
+    ast = p.declaration()
+    print 'Expected:', expected
+    print 'Got:     ', ast
+    assert isinstance(ast, st.ProcDecl)
+    assert p.error_encountered
+    assert ast == expected
+    
 # Whole program tests
 def parse_program(src):
     return parser.parse_tokens(scanner.tokenize_string(src))
