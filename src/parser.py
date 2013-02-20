@@ -513,10 +513,12 @@ if __name__ == '__main__':
         elif node == tokens.FALSE:
             print 'false',
         elif isinstance(node, syntaxtree.Subscript):
+            print '(',
             print_expression(node.name),
             print '[',
             print_expression(node.index)
             print ']',
+            print ')',
         elif isinstance(node, syntaxtree.Str):
             print node.s,
         else:

@@ -26,10 +26,15 @@ class Str(namedtuple('Str', ['s']), Node): pass
 class TreeWalker(object):
     def __init__(self):
         self.visit_functions = {}
+        self.leave_functions = {}
 
     def visit(self, node):
         if type(node) in self.visit_functions:
             self.visit_functions[type(node)](node)
+            
+    def leave(self, node):
+        if type(node) in self.leave_functions:
+            self.leave_functions[type(node)](node)
 
     def walk(self, node):
         self.visit(node)
@@ -40,3 +45,5 @@ class TreeWalker(object):
             elif isinstance(field, list):
                 for child in field:
                     self.walk(field)
+                    
+        self.leave(node)
