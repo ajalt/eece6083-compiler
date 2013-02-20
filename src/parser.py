@@ -346,7 +346,7 @@ class _Parser(object):
         self.match(tokens.CLOSEPAREN)
             
         # local variable declarations
-        var_decls = self.declarations()
+        decls = self.declarations()
         
         # Body
         self.match(tokens.BEGIN)
@@ -354,7 +354,7 @@ class _Parser(object):
         self.match(tokens.END)
         self.match(tokens.PROCEDURE)
         
-        return syntaxtree.ProcDecl(is_global, name, parameters, var_decls, body)
+        return syntaxtree.ProcDecl(is_global, name, parameters, decls, body)
             
     def variable_declaration(self):
         is_global = self._consume_optional_token(tokens.GLOBAL)
