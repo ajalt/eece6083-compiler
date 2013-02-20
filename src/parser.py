@@ -358,7 +358,7 @@ class _Parser(object):
             
     def variable_declaration(self):
         is_global = self._consume_optional_token(tokens.GLOBAL)
-        if self.token.type in (tokens.INT, tokens.FLOAT, tokens.BOOL, tokens.STRING_KEYWORD):
+        if self.token.type in (tokens.INT, tokens.FLOAT, tokens.BOOL, tokens.STRING_TYPE):
             type_mark = self.token.type
         else:
             raise ParseError('Expected type mark, found %s' % self.token.type, self.token)

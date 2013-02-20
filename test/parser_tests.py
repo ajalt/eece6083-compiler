@@ -120,7 +120,7 @@ def parse_decl(src):
 # variable declartaion tests
 def test_type_decls():
     types = {
-        'string': tokens.STRING_KEYWORD,
+        'string': tokens.STRING_TYPE,
         'int': tokens.INT,
         'bool': tokens.BOOL,
         'float': tokens.FLOAT,

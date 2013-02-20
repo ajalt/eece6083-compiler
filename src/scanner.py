@@ -45,7 +45,7 @@ token_map = {
     ']': tokens.CLOSEBRACKET,
     '&': tokens.AND,
     '|': tokens.OR,
-    'string': tokens.STRING_KEYWORD,
+    'string': tokens.STRING_TYPE,
     'int': tokens.INT,
     'bool': tokens.BOOL,
     'float': tokens.FLOAT,
