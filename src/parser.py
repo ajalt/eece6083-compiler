@@ -369,12 +369,12 @@ class _Parser(object):
         if self.next_token.type == tokens.OPENBRACKET:
             self.advance_token()
             self.match(tokens.NUMBER)
-            array_size = self.token.token
+            array_length = self.token.token
             self.match(tokens.CLOSEBRACKET)
         else:
-            array_size = None
+            array_length = None
             
-        return syntaxtree.VarDecl(is_global, type_mark, name, array_size)
+        return syntaxtree.VarDecl(is_global, type_mark, name, array_length)
     
     def statements(self):
         '''Return a list of zero or more statement nodes'''
