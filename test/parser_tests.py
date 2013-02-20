@@ -174,7 +174,7 @@ def check_procedure_declaraiton(src, expected):
     assert isinstance(ast, st.ProcDecl)
     assert isinstance(ast.name, st.Name)
     assert isinstance(ast.params, list)
-    assert isinstance(ast.var_decls, list)
+    assert isinstance(ast.decls, list)
     assert isinstance(ast.body, list)
     assert ast == expected
     
