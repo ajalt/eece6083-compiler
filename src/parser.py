@@ -86,15 +86,15 @@ class _Parser(object):
             
         class Number(Symbol):
             def prefix(self):
-                return syntaxtree.Num(self.value)
+                return syntaxtree.Num(self.value, token=self.parser.token)
             
         class Identifier(Symbol):
             def prefix(self):
-                return syntaxtree.Name(self.value)
+                return syntaxtree.Name(self.value, token=self.parser.token)
 
         class String(Symbol):
             def prefix(self):
-                return syntaxtree.Str(self.value)
+                return syntaxtree.Str(self.value, token=self.parser.token)
             
         class TrueVal(Symbol):
             def prefix(self):
@@ -111,11 +111,11 @@ class _Parser(object):
             
         class InfixOperator(Operator):
             def infix(self, left_term):
-                return syntaxtree.BinaryOp(self.value, left_term, self.parser.expression(self.precedence))
+                return syntaxtree.BinaryOp(self.value, left_term, self.parser.expression(self.precedence), token=self.parser.token)
             
         class PrefixOperator(Operator):
             def prefix(self):
-                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.precedence))
+                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.precedence), token=self.parser.token)
             
         class Minus(InfixOperator):
             def __init__(self, infix_precedence, prefix_precedence):
@@ -124,7 +124,7 @@ class _Parser(object):
                 self.prefix_precedence = prefix_precedence
                 
             def prefix(self):
-                return syntaxtree.UnaryOp(tokens.MINUS, self.parser.expression(self.prefix_precedence))
+                return syntaxtree.UnaryOp(tokens.MINUS, self.parser.expression(self.prefix_precedence), token=self.parser.token)
             
         class OpenParen(Symbol):
             def __init__(self, precedence):
@@ -157,9 +157,10 @@ class _Parser(object):
                 
             def infix(self, left_term):
                 # Array Index
+                token = self.parser.token
                 index = self.parser.expression()
                 self.parser.match(tokens.CLOSEBRACKET)
-                return syntaxtree.Subscript(left_term, index) 
+                return syntaxtree.Subscript(left_term, index, token=token) 
 
         #  expression_operators is a map of tokens types to symbol classes. If a
         #  token is encountered that is not valid in an expression, the map will
@@ -265,7 +266,7 @@ class _Parser(object):
             # program header
             self.match(tokens.PROGRAM)
             self.match(tokens.IDENTIFIER)
-            name = syntaxtree.Name(self.token.token)
+            name = syntaxtree.Name(self.token.token, token=self.token)
             self.match(tokens.IS)
             
             # program body
@@ -331,7 +332,7 @@ class _Parser(object):
             raise ParseError('Expected %r, found %r' % (tokens.PROCEDURE, self.token.type), self.token)
         
         self.match(tokens.IDENTIFIER)
-        name = syntaxtree.Name(self.token.token)
+        name = syntaxtree.Name(self.token.token, token=self.token)
 
         # Parameter list
         self.match(tokens.OPENPAREN)
@@ -364,7 +365,7 @@ class _Parser(object):
             raise ParseError('Expected type mark, found %s' % self.token.type, self.token)
         
         self.match(tokens.IDENTIFIER)
-        name = syntaxtree.Name(self.token.token)
+        name = syntaxtree.Name(self.token.token, token=self.token)
         
         if self.next_token.type == tokens.OPENBRACKET:
             self.advance_token()
@@ -412,7 +413,7 @@ class _Parser(object):
         raise ParseError('Invalid %r in statement' % self.token.token, self.token)
     
     def procedure_call(self):
-        function_name = syntaxtree.Name(self.token.token)
+        function_name = syntaxtree.Name(self.token.token, token=self.token)
         self.match(tokens.OPENPAREN)
         function_args = []
         if self.next_token.type != tokens.CLOSEPAREN:
@@ -427,7 +428,7 @@ class _Parser(object):
         if self.token.type != tokens.IDENTIFIER:
             raise ParseError('Target of assignment must be a variable, not %s' % self.token.token, self.token)
         
-        target = syntaxtree.Name(self.token.token)
+        target = syntaxtree.Name(self.token.token, token=self.token)
         self.match(tokens.ASSIGN)
         value = self.expression()
         return syntaxtree.Assign(target, value)

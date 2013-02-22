@@ -83,7 +83,11 @@ def test_missing_operand():
     
 def test_parenthesis_equal_containing_expression():
     exp = '1 + 2'
-    assert parse_ex('(%s)' % exp) == parse_ex(exp)
+    expected = parse_ex(exp)
+    got = parse_ex('(%s)' % exp)
+    print 'Expected:', expected
+    print 'Got:     ', got
+    assert expected == got
     
 def test_parenthesis_grouping():
     assert parse_ex('2 * (1 + 3)') == st.BinaryOp(tokens.MULTIPLY, st.Num('2'),
@@ -101,7 +105,7 @@ def test_subscript():
     ast = parse_ex('a[1]')
     print ast
     assert isinstance(ast, st.Subscript)
-    assert ast == (st.Name('a'), st.Num('1'))
+    assert ast == st.Subscript(st.Name('a'), st.Num('1'))
     
 @raises(parser.ParseError)
 def test_empty_subsrcipt():
@@ -132,11 +136,12 @@ def test_type_decls():
     
 def check_type_declaration(is_global, name, tok, array_len):
     ast = parse_decl('%s %s x%s' %
-                     ('global' if is_global else '',name,
+                     ('global' if is_global else '',
+                      name,
                       '[%s]' % array_len if array_len is not None else ''))
     expected = st.VarDecl(is_global, tok, st.Name('x'), array_len)
-    print 'Got:     ',ast
     print 'Expected:', expected
+    print 'Got:     ', ast
     assert isinstance(ast, st.VarDecl)
     assert ast == expected
     
