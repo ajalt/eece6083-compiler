@@ -98,16 +98,16 @@ class _Parser(object):
             
         class TrueVal(Symbol):
             def prefix(self):
-                return tokens.TRUE
+                return syntaxtree.Num('1', token=self.parser.token)
             
         class FalseVal(Symbol):
             def prefix(self):
-                return tokens.FALSE
-            
+                return syntaxtree.Num('0', token=self.parser.token)
+
         class Operator(Symbol):
             def __init__(self, value, precedence):
                 self.value = value
-                self.precedence = precedence
+                self.precedence = self.prefix_precedence = precedence
             
         class InfixOperator(Operator):
             def infix(self, left_term):
@@ -115,22 +115,15 @@ class _Parser(object):
             
         class PrefixOperator(Operator):
             def prefix(self):
-                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.precedence), token=self.parser.token)
+                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.prefix_precedence), token=self.parser.token)
             
-        class Minus(InfixOperator):
+        class Minus(InfixOperator, PrefixOperator):
             def __init__(self, infix_precedence, prefix_precedence):
                 self.value = tokens.MINUS
                 self.precedence = infix_precedence
                 self.prefix_precedence = prefix_precedence
-                
-            def prefix(self):
-                return syntaxtree.UnaryOp(tokens.MINUS, self.parser.expression(self.prefix_precedence), token=self.parser.token)
             
-        class OpenParen(Symbol):
-            def __init__(self, precedence):
-                self.value = tokens.OPENPAREN
-                self.precedence = precedence
-                
+        class OpenParen(Operator):
             def prefix(self):
                 # Grouping
                 exp = self.parser.expression()
@@ -150,11 +143,7 @@ class _Parser(object):
             #    self.parser.match(tokens.CLOSEPAREN)
             #    return syntaxtree.Call(function_name, function_args)
                
-        class OpenBracket(Symbol):
-            def __init__(self, precedence):
-                super(OpenBracket, self).__init__(tokens.OPENBRACKET)
-                self.precedence = precedence
-                
+        class OpenBracket(Operator):
             def infix(self, left_term):
                 # Array Index
                 token = self.parser.token
@@ -193,11 +182,10 @@ class _Parser(object):
             tokens.NOTEQUAL: InfixOperator(tokens.NOTEQUAL, 3),
             tokens.MULTIPLY: InfixOperator(tokens.MULTIPLY, 4),
             tokens.DIVIDE: InfixOperator(tokens.DIVIDE, 4),
-            tokens.OPENPAREN: OpenParen(5),
-            tokens.OPENBRACKET: OpenBracket(5),
+            tokens.OPENPAREN: OpenParen(tokens.OPENPAREN, 5),
+            tokens.OPENBRACKET: OpenBracket(tokens.OPENBRACKET, 5),
         })
                 
-    
     def get_symbol(self, token):
         if token.type in (tokens.NUMBER, tokens.IDENTIFIER, tokens.STRING):
             return self.expression_operators[token.type](token.token)
@@ -480,7 +468,6 @@ class _Parser(object):
         
         return syntaxtree.For(assignment, test, body)
         
-
 def parse_tokens(token_stream):
     '''Return an ast created from an iterable of tokens.
     
