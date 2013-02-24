@@ -111,11 +111,15 @@ class _Parser(object):
             
         class InfixOperator(Operator):
             def infix(self, left_term):
-                return syntaxtree.BinaryOp(self.value, left_term, self.parser.expression(self.precedence), token=self.parser.token)
+                # We have to store the current token, since calling expression
+                # in the return value will advance it.
+                token = self.parser.token
+                return syntaxtree.BinaryOp(self.value, left_term, self.parser.expression(self.precedence), token=token)
             
         class PrefixOperator(Operator):
             def prefix(self):
-                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.prefix_precedence), token=self.parser.token)
+                token = self.parser.token
+                return syntaxtree.UnaryOp(self.value, self.parser.expression(self.prefix_precedence), token=token)
             
         class Minus(InfixOperator, PrefixOperator):
             def __init__(self, infix_precedence, prefix_precedence):
