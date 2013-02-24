@@ -1,5 +1,5 @@
 program test_program is
-    int a;
+    float a;
 begin
     a := 1;
 end program
