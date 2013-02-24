@@ -1,0 +1,5 @@
+program test_program is
+    int a;
+begin
+    a := 1;
+end program
