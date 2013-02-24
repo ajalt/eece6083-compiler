@@ -1,9 +1,5 @@
-import collections
-
 import syntaxtree
 import tokens
-
-_array_type = collections.namedtuple('_array_type', ['type', 'length'])
 
 class _Checker(syntaxtree.TreeWalker):
     def __init__(self):
@@ -11,6 +7,8 @@ class _Checker(syntaxtree.TreeWalker):
         
         self.global_scope = {}
         self.scopes = [{}]
+        
+        self.error_encountered = False
         
         self.visit_functions = {
             syntaxtree.Program:self.visit_program,
@@ -22,6 +20,19 @@ class _Checker(syntaxtree.TreeWalker):
         self.leave_functions = {
             syntaxtree.ProcDecl:self.leave_procdecl,
         }
+        
+    def report_error(self, msg, token=None):
+        self.error_encountered = True
+        if token:
+            underline = '^' if token.start == token.end else '~'
+            line = token.line.rstrip()
+            print ('Error on line %s: %s\n'
+                    '    %s\n'
+                    '    %s') % (token.lineno, msg, line,
+                                 ''.join((underline if token.start <= i <= token.end else ' ')
+                                            for i in xrange(len(line))))
+        else:
+            print msg
 
     def enter_scope(self):
         self.scopes.append({})
@@ -36,7 +47,7 @@ class _Checker(syntaxtree.TreeWalker):
             scope = self.scopes[-1]
 
         if name in scope:
-            raise Exception('name %s already defined' % name)
+            raise Exception('Name %r already defined' % name, name.token)
 
         scope[name] = value
 
@@ -47,15 +58,17 @@ class _Checker(syntaxtree.TreeWalker):
             try:
                 return self.global_scope[name]
             except KeyError:
-                raise Exception('Undefined id %r' % name)
+                raise Exception('Undefined id %r' % name, name.token)
             
     def get_type(self, node):
         if isinstance(node, syntaxtree.BinaryOp):
             type = self.unify_types(node.left, node.right)
+            if type is None:
+                return None
             if type != tokens.INT and node.op in (tokens.AND, tokens.OR, tokens.NOT):
-                raise Exception('Bitwise operators only valid on integers')
-            if type not in (tokens.INT, tokens.FLOAT):
-                raise Exception('Operators only valid on numbers')
+                self.report_error('Bitwise operators only valid on integers, not %r' % type, node.token)
+            elif type not in (tokens.INT, tokens.FLOAT):
+                self.report_error('Operator %r only valid on numbers' % node.op, node.token)
             return type
             
         if isinstance(node, syntaxtree.UnaryOp):
@@ -69,7 +82,13 @@ class _Checker(syntaxtree.TreeWalker):
         
         if isinstance(node, syntaxtree.Subscript):
             decl = self.get_decl(node.name)
-            return _array_type(decl.type, decl.array_length)
+            if not isinstance(decl, syntaxtree.VarDecl) or decl.array_length is None:
+                self.report_error('Subscripted value is not an array', node.token)
+                return None
+            if self.get_type(node.index) != tokens.INT:
+                self.report_error('Array index is not an integer', node.token)
+                return None
+            return decl.type
         
         if isinstance(node, syntaxtree.Str):
             return tokens.STRING_TYPE
@@ -78,19 +97,29 @@ class _Checker(syntaxtree.TreeWalker):
         type_a = self.get_type(a)
         type_b = self.get_type(b)
         
-        if isinstance(type_a, _array_type):
-            type_a = type_a.type
-        if isinstance(type_b, _array_type):
-            type_b = type_b.type
-            
+        # The error in this expression was already reported, don't report
+        # extraineous errors.
+        if None in (type_a, type_b):
+            return None
+        
+        if type_a == tokens.BOOL:
+            type_a = tokens.INT
+        if type_b == tokens.BOOL:
+            type_b = tokens.INT
+        
         if type_a == type_b:
             return type_a
+        
         if set((type_a, type_b)) == set((tokens.INT, tokens.FLOAT)):
             return tokens.FLOAT
-        raise Exception('Cannot unify %r and %r' % (type_a, type_b))
+        
+        # Improve the error printout a little by giving the output a better range
+        if a.token is not None and b.token is not None:
+            token = a.token._replace(end=b.token.end)
+        else:
+            token = a.token
+        self.report_error('Incompatible types %r and %r' % (type_a, type_b), token)
     
-        print a,b,type_a,type_b
-
     def visit_program(self, node):
         for decl in node.decls:
             self.define_variable(decl.name, decl, decl.is_global)
@@ -98,8 +127,9 @@ class _Checker(syntaxtree.TreeWalker):
     def visit_call(self, node):
         proc_decl = self.get_decl(node.name)
         
-        if len(node.args) != len(proc_decl, params):
-            raise Exception('Wrong number of args')
+        if len(node.args) != len(proc_decl.params):
+            self.report_error('Procedure %r takes exactly %s arguments (%s given)' %
+                             (node.name.id, len(proc_decl.params), len(node.args)), node.token)
         
         for arg, param in zip(node.args, proc_decl.params):
             self.unify_types(arg, param.var_decl)
@@ -111,15 +141,16 @@ class _Checker(syntaxtree.TreeWalker):
         self.enter_scope()
         for decl in node.decls:
             if decl.is_global:
-                raise Exception('Can only declare global variables at top level scope.')
+                self.report_error('Can only declare global identifiers at top level scope.', decl.name.token)
             self.define_variable(decl.name, decl)
         
     def leave_procdecl(self, node):
         self.leave_scope()
         
-        
-def check_node(node):
-    _Checker().walk(node)
+def tree_is_valid(node):
+    checker = _Checker()
+    checker.walk(node)
+    return not checker.error_encountered
     
 if __name__ == '__main__':
     import argparse
@@ -131,5 +162,5 @@ if __name__ == '__main__':
     argparser.add_argument('filename', help='the file to parse')
     args = argparser.parse_args()
     
-    check_node(parser.parse_tokens(scanner.tokenize_file(args.filename)))
+    print tree_is_valid(parser.parse_tokens(scanner.tokenize_file(args.filename)))
 
