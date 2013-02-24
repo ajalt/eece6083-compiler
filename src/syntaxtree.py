@@ -44,8 +44,9 @@ class Node(object):
         if kwargs:
             raise TypeError('Invalid keyword arguments: %r' % kwargs.keys())
         if len(args) != len(self.__slots__) - len(Node.__slots__):
-            raise TypeError('__init__() takes exactly %s arguments (%s given)' %
-                            (len(args), len(self.__slots__) - len(Node.__slots__)))
+            raise TypeError('%s() takes exactly %s arguments (%s given)' %
+                            (self.__class__.__name__, len(self.__slots__) -
+                            len(Node.__slots__), len(args)))
         for slot, val in itertools.izip(self.__slots__, args):
            setattr(self, slot, val)
     
