@@ -288,12 +288,27 @@ def test_assignment_statement_with_expression_value():
     assert isinstance(ast, st.Assign)
     assert ast == st.Assign(st.Name('x'), st.BinaryOp(tokens.PLUS, st.Num('1'), st.Num('2')))
 
+def test_assignment_statement_with_array_subscript_target():
+    ast = parse_statement('x[0] := 1')
+    expected = st.Assign(st.Subscript(st.Name('x'), st.Num('0')), st.Num('1'))
+    print 'Expected:', expected
+    print 'Got:     ', ast
+    assert isinstance(ast, st.Assign)
+    assert ast == expected
+    
+def test_assignment_statement_with_array_subscript_expression_target():
+    ast = parse_statement('x[1 + 2] := 1')
+    expected = st.Assign(st.Subscript(st.Name('x'), st.BinaryOp(tokens.PLUS, st.Num('1'), st.Num('2'))), st.Num('1'))
+    print 'Expected:', expected
+    print 'Got:     ', ast
+    assert isinstance(ast, st.Assign)
+    assert ast == expected
+
 # return
 def test_return_statement():
     assert parse_statement('return') == tokens.RETURN
 
 # call
-
 def test_call_with_no_args():
     ast = parse_statement('f()')
     assert isinstance(ast, st.Call)

@@ -170,9 +170,6 @@ class _Parser(object):
             tokens.STRING: String,
             tokens.TRUE: TrueVal(tokens.TRUE),
             tokens.FALSE: FalseVal(tokens.FALSE),
-            tokens.CLOSEPAREN: Symbol(tokens.CLOSEPAREN),
-            tokens.COMMA: Symbol(tokens.COMMA),
-            tokens.CLOSEBRACKET: Symbol(tokens.CLOSEBRACKET),
             tokens.OR: InfixOperator(tokens.OR, 1),
             tokens.AND: InfixOperator(tokens.AND, 1),
             tokens.NOT: PrefixOperator(tokens.NOT, 1),
@@ -394,7 +391,7 @@ class _Parser(object):
         if self.token.type == tokens.RETURN:
             return tokens.RETURN
         if self.token.type == tokens.IDENTIFIER:
-            if self.next_token.type == tokens.ASSIGN:
+            if self.next_token.type in (tokens.ASSIGN, tokens.OPENBRACKET):
                 return self.assignment_statement()
             if self.next_token.type == tokens.OPENPAREN:
                 return self.procedure_call()
@@ -421,6 +418,12 @@ class _Parser(object):
             raise ParseError('Target of assignment must be a variable, not %s' % self.token.token, self.token)
         
         target = syntaxtree.Name(self.token.token, token=self.token)
+        
+        if self.next_token.type == tokens.OPENBRACKET:
+            self.advance_token()
+            index = self.expression()
+            target = syntaxtree.Subscript(target, index)
+            self.match(tokens.CLOSEBRACKET)
         self.match(tokens.ASSIGN)
         value = self.expression()
         return syntaxtree.Assign(target, value)
