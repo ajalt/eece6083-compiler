@@ -1,5 +1,30 @@
 import itertools
 
+class TreeWalker(object):
+    def __init__(self):
+        self.visit_functions = {}
+        self.leave_functions = {}
+
+    def visit(self, node):
+        if type(node) in self.visit_functions:
+            self.visit_functions[type(node)](node)
+            
+    def leave(self, node):
+        if type(node) in self.leave_functions:
+            self.leave_functions[type(node)](node)
+
+    def walk(self, node):
+        self.visit(node)
+
+        for field in node:
+            if isinstance(field, Node):
+                self.walk(field)
+            elif isinstance(field, list):
+                for child in field:
+                    self.walk(field)
+                    
+        self.leave(node)
+
 class Node(object):
     '''Baseclass for AST nodes.
     
@@ -111,37 +136,17 @@ class Subscript(object):
 class Num(object):
     __metaclass__ = NodeMeta
     __slots__ = ('n',)
+    def __hash__(self):
+        return hash(self.n)
 
 class Name(object):
     __metaclass__ = NodeMeta
     __slots__ = ('id',)
+    def __hash__(self):
+        return hash(self.id)
 
 class Str(object):
     __metaclass__ = NodeMeta
     __slots__ = ('s',)
-
-
-class TreeWalker(object):
-    def __init__(self):
-        self.visit_functions = {}
-        self.leave_functions = {}
-
-    def visit(self, node):
-        if type(node) in self.visit_functions:
-            self.visit_functions[type(node)](node)
-            
-    def leave(self, node):
-        if type(node) in self.leave_functions:
-            self.leave_functions[type(node)](node)
-
-    def walk(self, node):
-        self.visit(node)
-
-        for field in node:
-            if isinstance(field, Node):
-                self.walk(field)
-            elif isinstance(field, list):
-                for child in field:
-                    self.walk(field)
-                    
-        self.leave(node)
+    def __hash__(self):
+        return hash(self.s)
