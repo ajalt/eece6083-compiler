@@ -359,7 +359,7 @@ class _Parser(object):
         if self.next_token.type == tokens.OPENBRACKET:
             self.advance_token()
             self.match(tokens.NUMBER)
-            array_length = self.token.token
+            array_length = syntaxtree.Num(self.token.token, token=self.token)
             self.match(tokens.CLOSEBRACKET)
         else:
             array_length = None

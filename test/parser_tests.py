@@ -139,7 +139,8 @@ def check_type_declaration(is_global, name, tok, array_len):
                      ('global' if is_global else '',
                       name,
                       '[%s]' % array_len if array_len is not None else ''))
-    expected = st.VarDecl(is_global, tok, st.Name('x'), array_len)
+    array_len_node = None if array_len is None else st.Num(array_len)
+    expected = st.VarDecl(is_global, tok, st.Name('x'), array_len_node)
     print 'Expected:', expected
     print 'Got:     ', ast
     assert isinstance(ast, st.VarDecl)
