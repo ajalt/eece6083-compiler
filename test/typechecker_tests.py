@@ -11,13 +11,19 @@ from src import typechecker
 def get_parser(src):
     return parser._Parser(scanner.tokenize_string(src))
 
-def check_type(src, expected):
+def check_valid_type(src, expected):
     ast = get_parser(src).expression()
     checker = typechecker._Checker()
     result = checker.get_type(ast)
     print result, expected
     assert not checker.error_encountered
     assert result == expected
+    
+def check_invalid_type(src):
+    ast = get_parser(src).expression()
+    checker = typechecker._Checker()
+    result = checker.get_type(ast)
+    assert checker.error_encountered
     
 def test_literal_types():
     for src, expected in (
@@ -27,10 +33,13 @@ def test_literal_types():
         ('true', tokens.INT),
         ('false', tokens.INT),
     ):
-        yield check_type, src, expected
+        yield check_valid_type, src, expected
+        
+def test_undefined_identifiers():
+    for src in ('x', 'x[0]'):
+        yield check_invalid_type, src
 
-
-def check_type_unification(left, right, expected):
+def check_valid_type_unification(left, right, expected):
     checker = typechecker._Checker()
     result = checker.unify_types(left, right)
     print result
@@ -44,15 +53,15 @@ def test_valid_type_unifications():
         (st.Num('1.0'), st.Num('1.0'), tokens.FLOAT),
         (st.Str('"s"'), st.Str('"s"'), tokens.STRING_TYPE),
     ):
-        yield check_type_unification, left, right, expected
+        yield check_valid_type_unification, left, right, expected
 
 def test_invalid_type_unifications():
     for left, right in (
         (st.Str('"s"'), st.Num('1')),
         (st.Str('"s"'), st.Num('1.0')),
     ):
-        yield check_type_unification, left, right, None
-        yield check_type_unification, right, left, None
+        yield check_valid_type_unification, left, right, None
+        yield check_valid_type_unification, right, left, None
 
 def check_valid_expression(src):
     ast = get_parser(src).expression()
@@ -103,14 +112,36 @@ def check_program_is_invalid(src):
     ast = get_parser(src).parse()
     assert not typechecker.tree_is_valid(ast)
     
-# There isn't any good way to isolate variable references as a unit, so we just
-# have to test them as part of other tests.
+def test_valid_declarations():
+    template = '''
+    program test_program is
+        %s x%s;
+    begin
+        return;
+    end program
+    '''
+    for type in ('string', 'int', 'float', 'bool'):
+        for array_size in ('', '[1]'):
+            yield check_program_is_valid, template % (type, array_size)
+            
+def test_invalid_array_declaration():
+    src = '''
+    program test_program is
+        int x[1.0];
+    begin
+        return;
+    end program
+    '''
+    check_program_is_invalid(src)
+            
+# There isn't any good way to isolate variable references as a separate unit, so
+# we just have to test them as part of other tests.
 def test_minimal_assignments():
     template = '''
     program test_program is
-        %s x;
+        %s x%s;
     begin
-        x := %s;
+        x%s := %s;
     end program
     '''
     for type, val in (
@@ -124,4 +155,65 @@ def test_minimal_assignments():
         ('bool', '1'),
         ('bool', '0'),
     ):
-        yield check_program_is_valid, template % (type, val)
+        for array_size, array_subscript in (
+            ('', ''),
+            ('[1]', '[0]'),
+        ):
+            yield check_program_is_valid, template % (type, array_size, array_subscript, val)
+            
+def test_assignment_to_array_subscript():
+    template = '''
+    program test_program is
+        int x[1];
+    begin
+        x[%s] := 1;
+    end program
+    '''
+    for array_subscript in ('1', '1 + 2', 'x[0]'):
+        yield check_program_is_valid, template % array_subscript
+        
+def test_assignment_to_invalid_array_subscript():
+    template = '''
+    program test_program is
+        int x[1];
+    begin
+        x[%s] := 1;
+    end program
+    '''
+    for array_subscript in ('1.0', '"s"', '1 + 1.0'):
+        yield check_program_is_invalid, template % array_subscript
+        
+def test_valid_procedure_call_types():
+    template = '''
+    program test_program is
+        procedure f (%s x in)
+        
+        begin end procedure;
+    begin
+        f(%s);
+    end program
+    '''
+    for type, arg in (
+        ('int', '1'),
+        ('int', '1.0'),
+        ('float', '1.0'),
+        ('float', '1'),
+        ('string', '"s"'),
+    ):
+        yield check_program_is_valid, template % (type, arg)
+        
+def test_multiple_prameters_in_procedure_call():
+    template = '''
+    program test_program is
+        procedure f (%s)
+        
+        begin end procedure;
+    begin
+        f(%s);
+    end program
+    '''
+    params = ('int a in', 'int b in', 'int c in')
+    args = ('1', '2', '3')
+    for i in xrange(len(params)):
+        src = template % (', '.join(params[:i+1]), ', '.join(args[:i+1]))
+    
