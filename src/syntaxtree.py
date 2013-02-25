@@ -59,7 +59,7 @@ class Node(object):
         return len(self.__slots__)
             
     def __repr__(self):
-        arglist = ', '.join('%s=%r' % (s, getattr(self, s)) for s in self.__slots__)
+        arglist = ', '.join('%s=%r' % (s, getattr(self, s)) for s in self.__slots__ if s != 'token')
         return '%s(%s)' %(self.__class__.__name__, arglist)
     
     def __eq__(self, other):
