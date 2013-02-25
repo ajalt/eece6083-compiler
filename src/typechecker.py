@@ -47,8 +47,15 @@ class _Checker(syntaxtree.TreeWalker):
             scope = self.scopes[-1]
 
         if name in scope:
-            raise Exception('Name %r already defined' % name, name.token)
-
+            self.report_error('Name %r already defined' % name, name.token)
+            return
+        
+        if isinstance(value, syntaxtree.VarDecl) and value.array_length is not None:
+            # Record the declaration even if it's incorrect, so that we don't
+            # get generate spurious error when the name is referenced.
+            array_length_type = self.get_type(value.array_length)
+            if array_length_type != tokens.INT:
+                self.report_error('Size of array has non-integer type %r' % array_length_type, value.array_length.token)
         scope[name] = value
 
     def get_decl(self, name):
@@ -58,7 +65,8 @@ class _Checker(syntaxtree.TreeWalker):
             try:
                 return self.global_scope[name]
             except KeyError:
-                raise Exception('Undefined id %r' % name, name.token)
+                self.report_error('Undefined identifier %r' % name, name.token)
+                return None
             
     def get_type(self, node):
         if isinstance(node, syntaxtree.BinaryOp):
@@ -78,10 +86,15 @@ class _Checker(syntaxtree.TreeWalker):
             return tokens.FLOAT if '.' in node.n else tokens.INT
         
         if isinstance(node, syntaxtree.Name):
-            return self.get_decl(node).type
+            decl = self.get_decl(node)
+            if decl is None:
+                return None
+            return decl.type
         
         if isinstance(node, syntaxtree.Subscript):
             decl = self.get_decl(node.name)
+            if decl is None:
+                return None
             if not isinstance(decl, syntaxtree.VarDecl) or decl.array_length is None:
                 self.report_error('Subscripted value is not an array', node.token)
                 return None
@@ -125,11 +138,11 @@ class _Checker(syntaxtree.TreeWalker):
             self.define_variable(decl.name, decl, decl.is_global)
 
     def visit_call(self, node):
-        proc_decl = self.get_decl(node.name)
+        proc_decl = self.get_decl(node.func)
         
         if len(node.args) != len(proc_decl.params):
             self.report_error('Procedure %r takes exactly %s arguments (%s given)' %
-                             (node.name.id, len(proc_decl.params), len(node.args)), node.token)
+                             (node.func.id, len(proc_decl.params), len(node.args)), node.token)
         
         for arg, param in zip(node.args, proc_decl.params):
             self.unify_types(arg, param.var_decl)
