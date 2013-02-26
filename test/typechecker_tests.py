@@ -194,6 +194,8 @@ def test_valid_procedure_call_types():
     end program
     '''
     for type, arg in (
+        ('bool', '1'),
+        ('bool', '1.0'),
         ('int', '1'),
         ('int', '1.0'),
         ('float', '1.0'),
@@ -201,6 +203,25 @@ def test_valid_procedure_call_types():
         ('string', '"s"'),
     ):
         yield check_program_is_valid, template % (type, arg)
+        
+def test_invalid_procedure_call_types():
+    template = '''
+    program test_program is
+        procedure f (%s x in)
+        
+        begin end procedure;
+    begin
+        f(%s);
+    end program
+    '''
+    for type, arg in (
+        ('int', '"s"'),
+        ('bool', '"s"'),
+        ('float', '"s"'),
+        ('string', '1'),
+        ('string', '1.0'),
+    ):
+        yield check_program_is_invalid, template % (type, arg)
         
 def test_multiple_prameters_in_procedure_call():
     template = '''

@@ -70,7 +70,7 @@ class _Checker(syntaxtree.TreeWalker):
             
     def get_type(self, node):
         if isinstance(node, syntaxtree.BinaryOp):
-            type = self.unify_types(node.left, node.right)
+            type = self.unify_node_types(node.left, node.right)
             if type is None:
                 return None
             if type != tokens.INT and node.op in (tokens.AND, tokens.OR, tokens.NOT):
@@ -106,10 +106,10 @@ class _Checker(syntaxtree.TreeWalker):
         if isinstance(node, syntaxtree.Str):
             return tokens.STRING_TYPE
         
-    def unify_types(self, a, b):
-        type_a = self.get_type(a)
-        type_b = self.get_type(b)
+    def unify_node_types(self, node_a, node_b):
+        self.unify_types(self.get_type(node_a), self.get_type(node_b))
         
+    def unify_types(self, type_a, type_b):
         # The error in this expression was already reported, don't report
         # extraineous errors.
         if None in (type_a, type_b):
@@ -145,10 +145,14 @@ class _Checker(syntaxtree.TreeWalker):
                              (node.func.id, len(proc_decl.params), len(node.args)), node.token)
         
         for arg, param in zip(node.args, proc_decl.params):
-            self.unify_types(arg, param.var_decl)
+            argtype = self.get_type(arg)
+            print argtype, param.var_decl.type
+            if argtype != param.var_decl.type:
+                self.report_error('Argument type %r does not match parameter type %r' %
+                                  (argtype, param.var_decl.type), arg.token)
             
     def visit_assign(self, node):
-        self.unify_types(node.target, node.value)
+        self.unify_node_types(node.target, node.value)
     
     def visit_procdecl(self, node):
         self.enter_scope()
