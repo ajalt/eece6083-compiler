@@ -7,6 +7,7 @@ from src import tokens
 from src import parser
 from src import syntaxtree as st
 from src import typechecker
+from src.typechecker import TypeCheckError
 
 def get_parser(src):
     return parser._Parser(scanner.tokenize_string(src))
@@ -19,11 +20,11 @@ def check_valid_type(src, expected):
     assert not checker.error_encountered
     assert result == expected
     
+@raises(TypeCheckError)
 def check_invalid_type(src):
     ast = get_parser(src).expression()
     checker = typechecker._Checker()
     result = checker.get_type(ast)
-    assert checker.error_encountered
     
 def test_literal_types():
     for src, expected in (
@@ -56,13 +57,18 @@ def test_valid_type_unifications():
     ):
         yield check_valid_type_unification, left, right, expected
 
+@raises(TypeCheckError)
+def check_invalid_type_unification(left, right):
+    checker = typechecker._Checker()
+    result = checker.unify_node_types(left, right)
+
 def test_invalid_type_unifications():
     for left, right in (
         (st.Str('"s"'), st.Num('1')),
         (st.Str('"s"'), st.Num('1.0')),
     ):
-        yield check_valid_type_unification, left, right, None
-        yield check_valid_type_unification, right, left, None
+        yield check_invalid_type_unification, left, right
+        yield check_invalid_type_unification, right, left
 
 def check_valid_expression(src):
     ast = get_parser(src).expression()
@@ -70,6 +76,7 @@ def check_valid_expression(src):
     checker.get_type(ast)
     assert not checker.error_encountered
     
+@raises(TypeCheckError)
 def check_invalid_expression(src):
     ast = get_parser(src).expression()
     checker = typechecker._Checker()
@@ -279,6 +286,18 @@ def test_recursive_procedure():
     '''
     yield check_program_is_valid, src
     
+def test_call_to_undefined_function():
+    src = '''
+    program test_program is
+        procedure f ()
+        begin
+            x();
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
+    
 def test_reference_to_global_variable():
     src = '''
     program test_program is
@@ -318,3 +337,56 @@ def test_illegal_global_variable_in_procdecl():
     end program
     '''
     yield check_program_is_invalid, src
+    
+def test_assigning_to_out_parameter_in_procedure_body():
+    src = '''
+    program test_program is
+        procedure f (int x out)
+        begin
+            x := 1;
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_valid, src
+      
+def test_reading_from_out_parameter_in_procedure_body():
+    src = '''
+    program test_program is
+        procedure f (int x out)
+        int y;
+        begin
+            y := x;
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
+    
+def test_assigning_to_in_parameter_in_procedure_body():
+    src = '''
+    program test_program is
+        procedure f (int x in)
+        begin
+            x := 1;
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
+      
+def test_reading_from_in_parameter_in_procedure_body():
+    src = '''
+    program test_program is
+        procedure f (int x in)
+        int y;
+        begin
+            y := x;
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_valid, src  
+
+    
+

@@ -10,6 +10,26 @@ they are printed and False is returned.
 import syntaxtree
 import tokens
 
+class TypeCheckError(Exception):
+    def __init__(self, msg, token=None):
+        self.msg = msg
+        self.token = token
+    
+    def __str__(self):
+        if self.token:
+            underline = '^' if self.token.start == self.token.end else '~'
+            line = self.token.line.rstrip()
+            return ('Error on line %s: %s\n'
+                    '    %s\n'
+                    '    %s') % (self.token.lineno, self.msg, line,
+                                 ''.join((underline if self.token.start <= i <= self.token.end else ' ')
+                                            for i in xrange(len(line))))
+        else:
+            return self.msg
+            
+    def __repr__(self):
+        return 'TypeCheckError(msg=%r, token=%r)' % (self.msg, self.token)
+
 class _Checker(syntaxtree.TreeWalker):
     def __init__(self):
         super(_Checker, self).__init__()
@@ -30,18 +50,9 @@ class _Checker(syntaxtree.TreeWalker):
             syntaxtree.ProcDecl:self.leave_procdecl,
         }
         
-    def report_error(self, msg, token=None):
+    def report_error(self, err):
         self.error_encountered = True
-        if token:
-            underline = '^' if token.start == token.end else '~'
-            line = token.line.rstrip()
-            print ('Error on line %s: %s\n'
-                    '    %s\n'
-                    '    %s') % (token.lineno, msg, line,
-                                 ''.join((underline if token.start <= i <= token.end else ' ')
-                                            for i in xrange(len(line))))
-        else:
-            print msg
+        print err
 
     def enter_scope(self):
         self.scopes.append({})
@@ -56,15 +67,14 @@ class _Checker(syntaxtree.TreeWalker):
             scope = self.scopes[-1]
 
         if name in scope:
-            self.report_error('Name %r already defined' % name, name.token)
-            return
+            self.report_error(TypeCheckError('Name %r already defined' % name, name.token))
         
         if isinstance(value, syntaxtree.VarDecl) and value.array_length is not None:
             # Record the declaration even if it's incorrect, so that we don't
-            # get generate spurious error when the name is referenced.
+            # generate spurious error when the name is referenced.
             array_length_type = self.get_type(value.array_length)
             if array_length_type != tokens.INT:
-                self.report_error('Size of array has non-integer type %r' % array_length_type, value.array_length.token)
+                self.report_error(TypeCheckError('Size of array has non-integer type %r' % array_length_type, value.array_length.token))
         scope[name] = value
 
     def get_decl(self, name):
@@ -74,18 +84,15 @@ class _Checker(syntaxtree.TreeWalker):
             try:
                 return self.global_scope[name]
             except KeyError:
-                self.report_error('Undefined identifier %r' % name, name.token)
-                return None
+                raise TypeCheckError('Undefined identifier %r' % name, name.token)
             
     def get_type(self, node):
         if isinstance(node, syntaxtree.BinaryOp):
             type = self.unify_node_types(node.left, node.right)
-            if type is None:
-                return None
             if type != tokens.INT and node.op in (tokens.AND, tokens.OR, tokens.NOT):
-                self.report_error('Bitwise operators only valid on integers, not %r' % type, node.token)
+                raise TypeCheckError('Bitwise operators only valid on integers, not %r' % type, node.token)
             elif type not in (tokens.INT, tokens.FLOAT):
-                self.report_error('Operator %r only valid on numbers' % node.op, node.token)
+                raise TypeCheckError('Operator %r only valid on numbers' % node.op, node.token)
             return type
             
         if isinstance(node, syntaxtree.UnaryOp):
@@ -95,42 +102,46 @@ class _Checker(syntaxtree.TreeWalker):
             return tokens.FLOAT if '.' in node.n else tokens.INT
         
         if isinstance(node, syntaxtree.Name):
-            decl = self.get_decl(node)
-            if decl is None:
-                return None
-            return decl.type
+            return self.get_decl(node).type
         
         if isinstance(node, syntaxtree.Subscript):
             decl = self.get_decl(node.name)
-            if decl is None:
-                return None
             if not isinstance(decl, syntaxtree.VarDecl) or decl.array_length is None:
-                self.report_error('Subscripted value is not an array', node.token)
-                return None
+                raise TypeCheckError('Subscripted value is not an array', node.token)
             if self.get_type(node.index) != tokens.INT:
-                self.report_error('Array index is not an integer', node.token)
-                return None
+                raise TypeCheckError('Array index is not an integer', node.token)
             return decl.type
         
         if isinstance(node, syntaxtree.Str):
             return tokens.STRING_TYPE
         
-    def unify_node_types(self, node_a, node_b):
-        type_a = self.get_type(node_a)
-        type_b = self.get_type(node_b)
-        if type_a is None or type_b is None:
-            return None
-        unified_type = self.unify_types(type_a, type_b)
+        raise TypeCheckError('Unknown type', node.token)
         
-        if unified_type is None:
+    def unify_node_types(self, node_a, node_b):
+        # This complicated chunk of error handling allows us to print errors for
+        # both nodes in order.
+        try:
+            type_a = self.get_type(node_a)
+        except TypeCheckError as err:
+            try:
+                type_b = self.get_type(node_b)
+            except TypeCheckError as err2:
+                self.report_error(err)
+                raise err2
+            else:
+                raise err
+        else:
+            type_b = self.get_type(node_b)
+        
+        try:
+            return self.unify_types(type_a, type_b)
+        except TypeCheckError:
             # Improve the error printout a little by giving the output a better range
             if node_a.token is not None and node_b.token is not None:
                 token = node_a.token._replace(end=node_b.token.end)
             else:
                 token = node_a.token
-            self.report_error('Incompatible types %r and %r' % (type_a, type_b), token)
-            return None
-        return unified_type
+            raise TypeCheckError('Incompatible types %r and %r' % (type_a, type_b), token)
         
     def unify_types(self, type_a, type_b):
         # The error in this expression was already reported, don't report
@@ -149,39 +160,56 @@ class _Checker(syntaxtree.TreeWalker):
         if set((type_a, type_b)) == set((tokens.INT, tokens.FLOAT)):
             return tokens.FLOAT
         
-        return None
+        raise TypeCheckError('Incompatible types %r and %r' % (type_a, type_b))
     
     def visit_program(self, node):
         for decl in node.decls:
             self.define_variable(decl.name, decl, decl.is_global)
 
     def visit_call(self, node):
-        proc_decl = self.get_decl(node.func)
-        
-        if len(node.args) != len(proc_decl.params):
-            self.report_error('Procedure %r takes exactly %s arguments (%s given)' %
-                             (node.func.id, len(proc_decl.params), len(node.args)), node.token)
-        
-        for arg, param in zip(node.args, proc_decl.params):
-            if param.direction == tokens.OUT and not isinstance(arg, syntaxtree.Name):
-                self.report_error('Argument to out parameter must be an identifier.', arg.token)
+        try:
+            proc_decl = self.get_decl(node.func)
+        except TypeCheckError as err:
+            self.report_error(err)
+        else:
+            if len(node.args) != len(proc_decl.params):
+                self.report_error(TypeCheckError('Procedure %r takes exactly %s arguments (%s given)' %
+                                 (node.func.id, len(proc_decl.params), len(node.args)), node.token))
             
-            argtype = self.get_type(arg)
-            if argtype is not None and self.unify_types(argtype, param.var_decl.type) is None:
-                self.report_error('Argument type %r does not match parameter type %r' %
-                                  (argtype, param.var_decl.type), arg.token)
-            
+            for arg, param in zip(node.args, proc_decl.params):
+                if param.direction == tokens.OUT and not isinstance(arg, syntaxtree.Name):
+                    self.report_error(TypeCheckError('Argument to out parameter must be an identifier.', arg.token))
+                
+                try:
+                    argtype = self.get_type(arg)
+                except TypeCheckError as err:
+                    self.report_error(err)
+                else:
+                    try:
+                        self.unify_types(argtype, param.var_decl.type)
+                    except TypeCheckError:
+                        self.report_error(TypeCheckError('Argument type %r does not match parameter type %r' %
+                                          (argtype, param.var_decl.type), arg.token))
+                
     def visit_assign(self, node):
-        self.unify_node_types(node.target, node.value)
+        try:
+            self.unify_node_types(node.target, node.value)
+        except TypeCheckError as err:
+            self.report_error(err)
     
     def visit_procdecl(self, node):
         self.enter_scope()
+        # Add procedure name to scope to allow recursion.
         self.define_variable(node.name, node)
+        # Add local variables to scope.
         for decl in node.decls:
             if decl.is_global:
-                self.report_error('Can only declare global identifiers at top level scope.', decl.name.token)
+                self.report_error(TypeCheckError('Can only declare global identifiers at top level scope.', decl.name.token))
             self.define_variable(decl.name, decl)
-        
+        # Add parameters to scope.
+        for param in node.params:
+            self.define_variable(param.var_decl.name, param)
+            
     def leave_procdecl(self, node):
         self.leave_scope()
         
@@ -205,4 +233,5 @@ if __name__ == '__main__':
     argparser.add_argument('filename', help='the file to parse')
     args = argparser.parse_args()
     
-    print tree_is_valid(parser.parse_tokens(scanner.tokenize_file(args.filename)))
+    if tree_is_valid(parser.parse_tokens(scanner.tokenize_file(args.filename))):
+        print 'Program is valid.'
