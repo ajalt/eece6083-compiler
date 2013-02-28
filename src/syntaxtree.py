@@ -1,36 +1,46 @@
 import itertools
 
 class TreeWalker(object):
+    '''Class that will walk an ast and call registered functions for each node found.
+    
+    To use this class, register functions in the visit_functions and
+    leave_functions dictionaries. The key for a callback sound be the class of
+    node that the function will be called at, and the value should be a function
+    that takes the current node.
+    
+    Functions registered in visit_functions will called be at a node before
+    being called at any children of that node (preorder traversal of the tree).
+    Functions registered in leave_functions will be called at a node after
+    being called at all children of that node (postorder traversal of the tree).
+    '''
     def __init__(self):
         self.visit_functions = {}
         self.leave_functions = {}
 
-    def visit(self, node):
+    def _visit(self, node):
         if type(node) in self.visit_functions:
             self.visit_functions[type(node)](node)
             
-    def leave(self, node):
+    def _leave(self, node):
         if type(node) in self.leave_functions:
             self.leave_functions[type(node)](node)
 
     def walk(self, node):
-        self.visit(node)
-
+        self._visit(node)
         for field in node:
             if isinstance(field, Node):
                 self.walk(field)
             elif isinstance(field, list):
                 for child in field:
-                    self.walk(field)
-                    
-        self.leave(node)
+                    self.walk(child)
+        self._leave(node)
 
 class Node(object):
-    '''Baseclass for AST nodes.
+    '''Base class for AST nodes.
     
-    This is exestially a mutable version of a namedtuple that's implemented with
-    a metaclass isntead of the horrific string templating that the stdlib uses.
-    All Nodes have an optional 'token' attribute that is not factored into
+    This is essentially a mutable version of a namedtuple that's implemented
+    with a metaclass instead of the horrifying string template that the stdlib
+    uses. All Nodes have an optional 'token' attribute that is not factored into
     equality comparisons. '''
     __hash__ = None
     __slots__ = ('token',)
