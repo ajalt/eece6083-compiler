@@ -1,5 +1,3 @@
 program test_program is
-    int a[0];
 begin
-    a := 1;
 end program
