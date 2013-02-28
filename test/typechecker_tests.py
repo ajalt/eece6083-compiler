@@ -41,8 +41,9 @@ def test_undefined_identifiers():
 
 def check_valid_type_unification(left, right, expected):
     checker = typechecker._Checker()
-    result = checker.unify_types(left, right)
-    print result
+    result = checker.unify_node_types(left, right)
+    print 'Expected:', expected
+    print 'Result:  ', result
     assert result == expected
     
 def test_valid_type_unifications():
@@ -237,4 +238,83 @@ def test_multiple_prameters_in_procedure_call():
     args = ('1', '2', '3')
     for i in xrange(len(params)):
         src = template % (', '.join(params[:i+1]), ', '.join(args[:i+1]))
+        
+def test_valid_argument_to_out_parameter_in_procedure_call():
+    src = '''
+    program test_program is
+        int x;
+        procedure f (int y out)
+        
+        begin end procedure;
+    begin
+        f(x);
+    end program
+    '''
+    yield check_program_is_valid, src
     
+def test_invalid_argument_to_out_parameter_in_procedure_call():
+    template = '''
+    program test_program is
+        procedure f (int y out)
+        
+        begin end procedure;
+    begin
+        f(%s);
+    end program
+    '''
+    for arg in ('x', '1', '1.0', '"s"', 'true', 'false', '1 + 1'):
+        yield check_program_is_invalid, template % arg
+        
+        
+def test_recursive_procedure():
+    src = '''
+    program test_program is
+        procedure f ()
+            
+        begin
+            f();
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_valid, src
+    
+def test_reference_to_global_variable():
+    src = '''
+    program test_program is
+        global int x;
+        procedure f ()
+            
+        begin
+            x := 1;
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_valid, src
+    
+def test_reference_to_nonglobal_variable():
+    src = '''
+    program test_program is
+        int x;
+        procedure f ()
+            
+        begin
+            x := 1;
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
+    
+def test_illegal_global_variable_in_procdecl():
+    src = '''
+    program test_program is
+        procedure f ()
+            global int x;
+        begin
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
