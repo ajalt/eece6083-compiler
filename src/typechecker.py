@@ -83,7 +83,7 @@ class _Checker(syntaxtree.TreeWalker):
         elif isinstance(name, syntaxtree.Subscript):
             key = name.name
         else:
-            raise TypeCheckError('%r must be an identifier' % name, name.token)
+            raise TypeCheckError('Expected an identifier', name.token)
         
         try:
             return self.scopes[-1][key]
@@ -114,6 +114,8 @@ class _Checker(syntaxtree.TreeWalker):
                 if decl.direction != tokens.IN:
                     raise TypeCheckError('Cannot read from out parameter', node.token)
                 return decl.var_decl.type
+            if isinstance(decl, syntaxtree.ProcDecl):
+                raise TypeCheckError('Identifier %r is a procedure, not a variable' % node.id, node.token)
             return decl.type
         
         if isinstance(node, syntaxtree.Subscript):
@@ -215,14 +217,14 @@ class _Checker(syntaxtree.TreeWalker):
         self.enter_scope()
         # Add procedure name to scope to allow recursion.
         self.define_variable(node.name, node)
+        # Add parameters to scope.
+        for param in node.params:
+            self.define_variable(param.var_decl.name, param)
         # Add local variables to scope.
         for decl in node.decls:
             if decl.is_global:
                 self.report_error(TypeCheckError('Can only declare global identifiers at top level scope.', decl.name.token))
             self.define_variable(decl.name, decl)
-        # Add parameters to scope.
-        for param in node.params:
-            self.define_variable(param.var_decl.name, param)
             
     def leave_procdecl(self, node):
         self.leave_scope()
