@@ -482,12 +482,12 @@ def test_program_with_two_declarations_and_two_statement():
         [tokens.RETURN, tokens.RETURN])
     check_program(src, expected)
 
-@raises(parser.ParseError)
+@raises(parser.ParseFailedError)
 def test_program_with_resync_error():
     src = 'program p is begin x := +; end program'
     parse_program(src)
     
-@raises(parser.ParseError)
+@raises(parser.ParseFailedError)
 def test_program_with_eof_error():
     src = 'program p is begin x := +; end'
     parse_program(src)
