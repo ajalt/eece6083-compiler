@@ -39,6 +39,10 @@ def test_literal_types():
 def test_undefined_identifiers():
     for src in ('x', 'x[0]'):
         yield check_invalid_type, src
+        
+def test_invalid_subscripts():
+    for name in ('1', '1.0', '"s"', 'true', 'false', '(1 + 1)'):
+        yield check_invalid_type, '%s[0]' % name
 
 def check_valid_type_unification(left, right, expected):
     checker = typechecker._Checker()
@@ -388,5 +392,71 @@ def test_reading_from_in_parameter_in_procedure_body():
     '''
     yield check_program_is_valid, src  
 
+def test_redefining_variable():
+    src = '''
+    program test_program is
+        int x;
+        float x;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
     
-
+def test_redefining_parameter_with_parameter():
+    src = '''
+    program test_program is
+        procedure f (int x in, float x in)
+        begin
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
+    
+def test_redefining_parameter_with_variable():
+    src = '''
+    program test_program is
+        procedure f (int x in)
+            float x;
+        begin
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_invalid, src
+    
+def test_shadowing_global_variable():
+    src = '''
+    program test_program is
+        global int x;
+        procedure f ()
+            int x;
+        begin
+        end procedure;
+    begin
+    end program
+    '''
+    yield check_program_is_valid, src
+    
+def test_referencing_procedure_like_variable():
+    src = '''
+    program test_program is
+        int x;
+        procedure f ()
+        begin
+        end procedure;
+    begin
+        x := f;
+    end program
+    '''
+    yield check_program_is_invalid, src
+    
+def test_two_invalid_types_in_expression():
+    src = '''
+    program test_program is
+        int x;
+    begin
+        x := a + b;
+    end program
+    '''
+    yield check_program_is_valid, src
