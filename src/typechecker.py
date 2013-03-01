@@ -78,13 +78,20 @@ class _Checker(syntaxtree.TreeWalker):
         scope[name] = value
 
     def get_decl(self, name):
+        if isinstance(name, syntaxtree.Name):
+            key = name
+        elif isinstance(name, syntaxtree.Subscript):
+            key = name.name
+        else:
+            raise TypeCheckError('%r must be an identifier' % name, name.token)
+        
         try:
-            return self.scopes[-1][name]
+            return self.scopes[-1][key]
         except KeyError:
             try:
-                return self.global_scope[name]
+                return self.global_scope[key]
             except KeyError:
-                raise TypeCheckError('Undefined identifier %r' % name, name.token)
+                raise TypeCheckError('Undefined identifier %r' % key, key.token)
             
     def get_type(self, node):
         if isinstance(node, syntaxtree.BinaryOp):
@@ -102,7 +109,12 @@ class _Checker(syntaxtree.TreeWalker):
             return tokens.FLOAT if '.' in node.n else tokens.INT
         
         if isinstance(node, syntaxtree.Name):
-            return self.get_decl(node).type
+            decl = self.get_decl(node)
+            if isinstance(decl, syntaxtree.Param):
+                if decl.direction != tokens.IN:
+                    raise TypeCheckError('Cannot read from out parameter', node.token)
+                return decl.var_decl.type
+            return decl.type
         
         if isinstance(node, syntaxtree.Subscript):
             decl = self.get_decl(node.name)
@@ -144,11 +156,6 @@ class _Checker(syntaxtree.TreeWalker):
             raise TypeCheckError('Incompatible types %r and %r' % (type_a, type_b), token)
         
     def unify_types(self, type_a, type_b):
-        # The error in this expression was already reported, don't report
-        # extraneous errors.
-        if None in (type_a, type_b):
-            return None
-        
         if type_a == tokens.BOOL:
             type_a = tokens.INT
         if type_b == tokens.BOOL:
@@ -193,7 +200,14 @@ class _Checker(syntaxtree.TreeWalker):
                 
     def visit_assign(self, node):
         try:
-            self.unify_node_types(node.target, node.value)
+            # node.target is guaranteed by the parser to be a Name node.
+            target_decl = self.get_decl(node.target)
+            if isinstance(target_decl, syntaxtree.Param):
+                if target_decl.direction == tokens.IN:
+                    self.report_error(TypeCheckError('Cannot assign to input parameter', node.target.token))
+                self.unify_types(target_decl.var_decl.type, self.get_type(node.value))
+            else:
+                self.unify_node_types(node.target, node.value)
         except TypeCheckError as err:
             self.report_error(err)
     
