@@ -78,6 +78,8 @@ class _Checker(syntaxtree.TreeWalker):
         scope[name] = value
 
     def get_decl(self, name):
+        ''' Return the symbol table entry for a given Node, or raise an error if it's undefined.
+        '''
         if isinstance(name, syntaxtree.Name):
             key = name
         elif isinstance(name, syntaxtree.Subscript):
@@ -94,6 +96,8 @@ class _Checker(syntaxtree.TreeWalker):
                 raise TypeCheckError('Undefined identifier %r' % key, key.token)
             
     def get_type(self, node):
+        '''Return the type of a given Node instance, or raise an error if it is invalid.
+        '''
         if isinstance(node, syntaxtree.BinaryOp):
             type = self.unify_node_types(node.left, node.right)
             if type != tokens.INT and node.op in (tokens.AND, tokens.OR, tokens.NOT):
@@ -132,6 +136,9 @@ class _Checker(syntaxtree.TreeWalker):
         raise TypeCheckError('Unknown type', node.token)
         
     def unify_node_types(self, node_a, node_b):
+        '''Return the a type able to represent the types of both Nodes, or raise an error if the types are not compatible.
+        '''
+        
         # This complicated chunk of error handling allows us to print errors for
         # both nodes in order.
         try:
@@ -158,6 +165,8 @@ class _Checker(syntaxtree.TreeWalker):
             raise TypeCheckError('Incompatible types %r and %r' % (type_a, type_b), token)
         
     def unify_types(self, type_a, type_b):
+        '''Return a type able to represent both given types, or raise an error if they are not compatible.
+        '''
         if type_a == tokens.BOOL:
             type_a = tokens.INT
         if type_b == tokens.BOOL:
@@ -170,6 +179,10 @@ class _Checker(syntaxtree.TreeWalker):
             return tokens.FLOAT
         
         raise TypeCheckError('Incompatible types %r and %r' % (type_a, type_b))
+    
+    # All of the following visit_* functions are called by the NodeWalker parent
+    # class. They are responsible for initiating all the type checking and
+    # ensuring that no TypeCheckErrors propagate past their scope.
     
     def visit_program(self, node):
         for decl in node.decls:
