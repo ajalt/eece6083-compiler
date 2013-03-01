@@ -482,5 +482,15 @@ def test_program_with_two_declarations_and_two_statement():
         [tokens.RETURN, tokens.RETURN])
     check_program(src, expected)
 
+@raises(parser.ParseError)
+def test_program_with_resync_error():
+    src = 'program p is begin x := +; end program'
+    parse_program(src)
+    
+@raises(parser.ParseError)
+def test_program_with_eof_error():
+    src = 'program p is begin x := +; end'
+    parse_program(src)
+
 def test_parsing_file():
     parser._Parser(scanner.tokenize_file(os.path.join('test', 'test_program.src'))).parse()
