@@ -459,4 +459,4 @@ def test_two_invalid_types_in_expression():
         x := a + b;
     end program
     '''
-    yield check_program_is_valid, src
+    yield check_program_is_invalid, src
