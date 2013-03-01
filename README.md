@@ -4,7 +4,7 @@ A project for my EECE 6083: Compiler Theory class.
 
 ## Quick Start
 * Install [Python 2.7](http://python.org/download/) if it is not already installed on your system.
-* You can see a sample of the scanner output by running the following from the `compiler` directory:
+* You can see a sample of the scanner output by running the following from the root `compiler` directory:
 ```
 python src/scanner.py test/test_program.src
 ```
@@ -15,11 +15,15 @@ python src/parser.py test/test_program.src
 ```
 python src/parser.py -e "1 + 2 * 3 / (4 + 5) == true"
 ```
+* You can see a sample of the typechecking by running the following:
+```
+python src/typechecker.py test/test_program.src
+```
 
 ## Testing
 Unit Tests for the compiler are written for the [nose](https://github.com/nose-devs/nose) testing framework.
 If you have nose instaleld on your system, you can run `nosetests` from the `compiler` directory to run the tests.
-The tests have 100% code coverage of the scanner and parser, as reported by the [coverage](http://pypi.python.org/pypi/coverage) package.
+The tests have 100% code coverage of the scanner, parser, and type checker, as reported by the [coverage](http://pypi.python.org/pypi/coverage) package.
 
 ## Author
 AJ Alt
