@@ -1,7 +1,8 @@
 import itertools
+import sys
 
 class TreeWalker(object):
-    '''Class that will walk an ast and call registered functions for each node found.
+    '''Class that will walk an AST and call registered functions for each node found.
     
     To use this class, register functions in the visit_functions and
     leave_functions dictionaries. The key for a callback sound be the class of
@@ -18,21 +19,76 @@ class TreeWalker(object):
 
     def _visit(self, node):
         if type(node) in self.visit_functions:
-            self.visit_functions[type(node)](node)
+            return self.visit_functions[type(node)](node)
         else:
-            self.visit_children(node)
+            return self.visit_children(node)
             
     def visit_children(self, node):
         for field in node:
             if isinstance(field, Node):
-                self._visit(field)
+                return self._visit(field)
             elif isinstance(field, list):
                 for child in field:
-                    self._visit(child)
+                    return self._visit(child)
 
     def walk(self, node):
-        self._visit(node)
+        return self._visit(node)
+        
+class TreeMutator(TreeWalker):
+    '''Class that will walk an AST and mutate the tree in place.
+    
+    Registered visit_functions should return a value that will replace the node
+    they are visitng. If they retunr None, the node will be removed from the
+    tree.'''
+    def visit_children(self, node):
+        for field_name, original_field in node.iter_fields():
+            if isinstance(original_field, Node):
+                new_field = self._visit(original_field)
+                setattr(node, field_name, new_field)
+            elif isinstance(original_field, list):
+                new_field = []
+                for child in original_field:
+                    value = self._visit(child)
+                    if value is not None:
+                        if isinstance(value, list):
+                            new_field.extend(value)
+                        else:
+                            new_field.append(value)
+                setattr(node, field_name, new_field)
+        return node
 
+def dump_tree(node, indent_level=1, stream=sys.stdout):
+    indent = '  ' * indent_level
+    stream.write(node.__class__.__name__)
+    stream.write('(')
+    
+    # If any fields are nodes, print each field on a seperate line
+    if any(isinstance(field, (list, Node)) for field in node):
+        for i, (name, field) in enumerate(node.iter_fields()):
+            if i:
+                stream.write(',')
+            stream.write('\n')
+            stream.write(indent)
+            stream.write(name)
+            stream.write('=')
+            if isinstance(field, Node):
+                dump_tree(field, indent_level+1)
+            elif isinstance(field, list):
+                stream.write('[')
+                for j, child in enumerate(field):
+                    if j:
+                        stream.write(',')
+                    stream.write('\n' + indent + '  ')
+                    dump_tree(child, indent_level+2)
+                    
+                stream.write(']')
+            else:
+                stream.write(repr(field))
+    # Otherwise, print all the fields on one line
+    else:
+        stream.write(', '.join(repr(field) for field in node))
+    stream.write(')')
+            
 class Node(object):
     '''Base class for AST nodes.
     
@@ -83,6 +139,12 @@ class Node(object):
     
     def __ne__(self, other):
         return not (self == other)
+    
+    def iter_fields(self):
+        '''Iterate over tuples of (field_name, field)'''
+        for slot in self.__slots__:
+            if slot != 'token':
+                yield slot, getattr(self, slot)
    
 
 # We have to use a metaclass here instead of inheritance since there's no easy
