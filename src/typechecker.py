@@ -46,10 +46,6 @@ class _Checker(syntaxtree.TreeWalker):
             syntaxtree.Call:self.visit_call,
         }
         
-        self.leave_functions = {
-            syntaxtree.ProcDecl:self.leave_procdecl,
-        }
-        
     def report_error(self, err):
         self.error_encountered = True
         print err
@@ -187,6 +183,8 @@ class _Checker(syntaxtree.TreeWalker):
     def visit_program(self, node):
         for decl in node.decls:
             self.define_variable(decl.name, decl, decl.is_global)
+            
+        self.visit_children(node)
 
     def visit_call(self, node):
         try:
@@ -215,7 +213,7 @@ class _Checker(syntaxtree.TreeWalker):
                 
     def visit_assign(self, node):
         try:
-            # node.target is guaranteed by the parser to be a Name node.
+            # node.target is guaranteed by the parser to be a Name or Subscript node.
             target_decl = self.get_decl(node.target)
             if isinstance(target_decl, syntaxtree.Param):
                 if target_decl.direction == tokens.IN:
@@ -228,6 +226,7 @@ class _Checker(syntaxtree.TreeWalker):
     
     def visit_procdecl(self, node):
         self.enter_scope()
+        
         # Add procedure name to scope to allow recursion.
         self.define_variable(node.name, node)
         # Add parameters to scope.
@@ -239,7 +238,8 @@ class _Checker(syntaxtree.TreeWalker):
                 self.report_error(TypeCheckError('Can only declare global identifiers at top level scope.', decl.name.token))
             self.define_variable(decl.name, decl)
             
-    def leave_procdecl(self, node):
+        self.visit_children(node)
+            
         self.leave_scope()
         
 def tree_is_valid(node):

@@ -10,9 +10,8 @@ class TreeWalker(object):
     
     Functions registered in visit_functions will called be at a node before
     being called at any children of that node (preorder traversal of the tree).
-    Functions registered in leave_functions will be called at a node after
-    being called at all children of that node (postorder traversal of the tree).
-    '''
+    A registered function must manually call visit_children if desired. Children
+    of nodes with registered funcitons will not be vistied automatically. '''
     def __init__(self):
         self.visit_functions = {}
         self.leave_functions = {}
@@ -20,20 +19,19 @@ class TreeWalker(object):
     def _visit(self, node):
         if type(node) in self.visit_functions:
             self.visit_functions[type(node)](node)
+        else:
+            self.visit_children(node)
             
-    def _leave(self, node):
-        if type(node) in self.leave_functions:
-            self.leave_functions[type(node)](node)
+    def visit_children(self, node):
+        for field in node:
+            if isinstance(field, Node):
+                self._visit(field)
+            elif isinstance(field, list):
+                for child in field:
+                    self._visit(child)
 
     def walk(self, node):
         self._visit(node)
-        for field in node:
-            if isinstance(field, Node):
-                self.walk(field)
-            elif isinstance(field, list):
-                for child in field:
-                    self.walk(child)
-        self._leave(node)
 
 class Node(object):
     '''Base class for AST nodes.
