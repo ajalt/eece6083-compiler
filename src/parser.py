@@ -528,7 +528,7 @@ if __name__ == '__main__':
         print_expression(_Parser(scanner.tokenize_string(args.filename_or_expression)).expression())
     else:
         try:
-            print parse_tokens(scanner.tokenize_file(args.filename_or_expression))
+            syntaxtree.dump_tree(parse_tokens(scanner.tokenize_file(args.filename_or_expression)))
         except ParseFailedError as err:
             print err
     
