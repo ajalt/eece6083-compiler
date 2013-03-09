@@ -1,8 +1,9 @@
 import itertools
 import sys
 
+
 class TreeWalker(object):
-    '''Class that will walk an AST and call registered functions for each node found.
+    '''Class that will walk an ast and call registered functions for each node found.
     
     To use this class, register functions in the visit_functions and
     leave_functions dictionaries. The key for a callback sound be the class of
@@ -26,10 +27,10 @@ class TreeWalker(object):
     def visit_children(self, node):
         for field in node:
             if isinstance(field, Node):
-                return self._visit(field)
+                self._visit(field)
             elif isinstance(field, list):
                 for child in field:
-                    return self._visit(child)
+                    self._visit(child)
 
     def walk(self, node):
         return self._visit(node)
