@@ -6,19 +6,68 @@ import tokens
 import syntaxtree
 
 class ConstantFolder(syntaxtree.TreeMutator):
+    '''Optimizer that performs constant folding within single expressions.'''
+    def __init__(self):
+        self.visit_functions = {
+            syntaxtree.BinaryOp: self.visit_binary_op,
+            syntaxtree.UnaryOp: self.visit_unary_op,
+        }
+        
+        self.modified_tree = False
+        
+    def get_const(self, node):
+        if isinstance(node, syntaxtree.Num):
+            return node.n
+        return None
+    
+    def is_literal(self, node):
+        return isinstance(node, (syntaxtree.Num, syntaxtree.Str))
+    
+    def visit_binary_op(self, node):
+        # Fold children first to allow for partial folding of an expression.
+        self.visit_children(node)
+        
+        left = self.get_const(node.left)
+        right = self.get_const(node.right)
+        if left is not None and right is not None:
+            self.modified_tree = True
+            result = eval('%s %s %s' % (left, node.op, right))
+            if result is True:
+                return syntaxtree.Num('1')
+            if result is False:
+                return syntaxtree.Num('0')
+            return syntaxtree.Num(str(result))
+        return node
+    
+    def visit_unary_op(self, node):
+        self.visit_children(node)
+        
+        operand = self.get_const(node.operand)
+        if operand is not None:
+            self.modified_tree = True
+            return syntaxtree.Num(str(eval('%s %s' % (node.op, operand))))
+        return node
+
+class ConstantPropagator(ConstantFolder):
+    '''Optimize that performs both constant folding and propagation.'''
     def __init__(self):
         self.global_scope = {}
         self.scopes = [{}]
         
         self.visit_functions = {
-            syntaxtree.Program: self.visit_program,
             syntaxtree.ProcDecl: self.visit_procdecl,
             syntaxtree.Assign: self.visit_assign,
-            syntaxtree.BinaryOp: self.visit_op,
-            syntaxtree.UnaryOp: self.visit_op,
+            syntaxtree.BinaryOp: self.visit_binary_op,
+            syntaxtree.UnaryOp: self.visit_unary_op,
+            syntaxtree.If: self.visit_jump,
+            syntaxtree.For: self.visit_jump,
         }
         
         self.modified_tree = False
+        
+        # Use a stack to keep track of whether we're in a loop or not since we
+        # can have nested loops.
+        self.stop_propagation = []
         
     def enter_scope(self):
         self.scopes.append({})
@@ -47,59 +96,22 @@ class ConstantFolder(syntaxtree.TreeMutator):
         if isinstance(node, syntaxtree.Num):
             return node.n
         
-        value = None
-        if isinstance(node, syntaxtree.BinaryOp):
-            value = self.fold_binary_op(node)
-        if isinstance(node, syntaxtree.UnaryOp):
-            value =  self.fold_unary_op(node)
         if isinstance(node, syntaxtree.Name):
             value = self.get_var(node)
-            
-        if isinstance(value, syntaxtree.Num):
-                return value.n
+            if isinstance(value, syntaxtree.Num):
+                    return value.n
         return None
-    
-    def is_const(self, node):
-        return isinstance(node, (syntaxtree.Num, syntaxtree.Str))
-    
-    def fold_binary_op(self, node):
-        left = self.get_const(node.left)
-        if left is not None:
-            right = self.get_const(node.right)
-            if right is not None:
-                print (left, node.op, right)
-                result = eval('%s %s %s' % (left, node.op, right))
-                if result is True:
-                    return syntaxtree.Num('1')
-                if result is False:
-                    return syntaxtree.Num('0')
-                return syntaxtree.Num(str(result))
-        return None
-    
-    def fold_unary_op(self, node):
-        operand = self.get_const(node.operand)
-        if operand is not None:
-            return syntaxtree.Num(str(eval('%s %s' % (node.op, operand))))
-        return None
-    
-    def visit_program(self, node):
-        for decl in node.decls:
-            self.define_variable(decl.name, None, decl.is_global)
-            
-        self.visit_children(node)
-        
-        return node
-        
+
     def visit_procdecl(self, node):
         self.enter_scope()
         
         # We have to add declarations to the scope here so that they properly
         # shadow global names
         
-        # Add parameters to scope.
-        for param in node.params:
-            if param.direction == tokens.IN:
-                self.define_variable(param.var_decl.name, None)
+        ## Add parameters to scope.
+        #for param in node.params:
+        #    if param.direction == tokens.IN:
+        #        self.define_variable(param.var_decl.name, None)
         # Add local variables to scope.
         for decl in node.decls:
             self.define_variable(decl.name, None)
@@ -113,32 +125,70 @@ class ConstantFolder(syntaxtree.TreeMutator):
     def visit_assign(self, node):
         # self.visit_children will fold the value if possible
         self.visit_children(node)
-        print node
-        if self.is_const(node.value):
-            self.define_variable(node.target, node.value)
-        return node
+        
+        if self.stop_propagation:
+            # Unset any variables we find if we're in a loop or branch
+            self.define_variable(node.target, None)
+        elif self.is_literal(node.value):
+                self.define_variable(node.target, node.value)
 
-    def visit_op(self, node):
-        const = self.get_const(node)
-        if const is not None:
-            self.modified_tree = True
-            return syntaxtree.Num(const)
         return node
     
+    def visit_jump(self, node):
+        self.stop_propagation.append(True)
+        self.visit_children(node)
+        self.stop_propagation.pop()
+        return node
+    
+class DeadCodeEliminator(syntaxtree.TreeMutator):
+    def __init__(self):
+        self.visit_functions = {
+            syntaxtree.If: self.visit_if,
+            syntaxtree.For: self.visit_for,
+        }
+        
+        self.modified_tree = False
+        
+    def visit_if(self, node):
+        print node
+        if node.test == syntaxtree.Num('1'):
+            return node.body
+        if node.test == syntaxtree.Num('0'):
+            return node.orelse
+        return node
+    
+    def visit_for(self, node):
+        if node.test == syntaxtree.Num('0'):
+            return None
+        return node
     
 if __name__ == '__main__':
     import scanner
     import parser
     import typechecker
     
-    argparser = argparse.ArgumentParser(description='Test the type checking functionality.')
-    
-    argparser.add_argument('filename', help='the file to parse')
-    args = argparser.parse_args()
-    
-    ast = parser.parse_tokens(scanner.tokenize_file(args.filename))
+    src = '''
+    program test_program is
+    int a;
+    int b;
+    int c;
+    int r;
+    begin
+        a := 15 + 15;
+        b := 9 - a / (2 + 3);
+        c :=  b * 4;
+        if (c > 10) then
+            c := c - 10;
+        end if;
+        r := c * (60 / a);
+    end program
+    '''
+
+    ast = parser.parse_tokens(scanner.tokenize_string(src))
     if typechecker.tree_is_valid(ast):
-        cf = ConstantFolder()
-        cf.walk(ast)
+        ConstantPropagator().walk(ast)
+        DeadCodeEliminator().walk(ast)
+        ConstantPropagator().walk(ast)
+        
         syntaxtree.dump_tree(ast)
     
