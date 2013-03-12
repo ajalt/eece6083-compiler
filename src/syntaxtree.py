@@ -13,7 +13,7 @@ class TreeWalker(object):
     Functions registered in visit_functions will called be at a node before
     being called at any children of that node (preorder traversal of the tree).
     A registered function must manually call visit_children if desired. Children
-    of nodes with registered funcitons will not be vistied automatically. '''
+    of nodes with registered functions will not be visited automatically. '''
     def __init__(self):
         self.visit_functions = {}
         self.leave_functions = {}
@@ -39,13 +39,19 @@ class TreeMutator(TreeWalker):
     '''Class that will walk an AST and mutate the tree in place.
     
     Registered visit_functions should return a value that will replace the node
-    they are visitng. If they retunr None, the node will be removed from the
+    they are visiting. If they return None, the node will be removed from the
     tree.'''
+    def __init__(self):
+        super(TreeMutator, self).__init__()
+        self.modified_tree = False
+    
     def visit_children(self, node):
         for field_name, original_field in node.iter_fields():
             if isinstance(original_field, Node):
                 new_field = self._visit(original_field)
                 setattr(node, field_name, new_field)
+                if original_field != new_field:
+                    self.modified_tree = True
             elif isinstance(original_field, list):
                 new_field = []
                 for child in original_field:
@@ -56,14 +62,16 @@ class TreeMutator(TreeWalker):
                         else:
                             new_field.append(value)
                 setattr(node, field_name, new_field)
+                if original_field != new_field:
+                    self.modified_tree = True
         return node
-
+    
 def dump_tree(node, indent_level=1, stream=sys.stdout):
     indent = '  ' * indent_level
     stream.write(node.__class__.__name__)
     stream.write('(')
     
-    # If any fields are nodes, print each field on a seperate line
+    # If any fields are nodes, print each field on a separate line
     if any(isinstance(field, (list, Node)) for field in node):
         for i, (name, field) in enumerate(node.iter_fields()):
             if i:
