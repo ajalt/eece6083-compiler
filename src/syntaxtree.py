@@ -21,8 +21,9 @@ class TreeWalker(object):
     def _visit(self, node):
         if type(node) in self.visit_functions:
             return self.visit_functions[type(node)](node)
-        else:
+        elif isinstance(node, Node):
             return self.visit_children(node)
+        return node
             
     def visit_children(self, node):
         for field in node:
@@ -66,37 +67,40 @@ class TreeMutator(TreeWalker):
                     self.modified_tree = True
         return node
     
-def dump_tree(node, indent_level=1, stream=sys.stdout):
+def dump_tree(node, indent_level=1, output=sys.stdout.write):
     indent = '  ' * indent_level
-    stream.write(node.__class__.__name__)
-    stream.write('(')
+    output(node.__class__.__name__)
+    output('(')
     
     # If any fields are nodes, print each field on a separate line
     if any(isinstance(field, (list, Node)) for field in node):
         for i, (name, field) in enumerate(node.iter_fields()):
             if i:
-                stream.write(',')
-            stream.write('\n')
-            stream.write(indent)
-            stream.write(name)
-            stream.write('=')
+                output(',')
+            output('\n')
+            output(indent)
+            output(name)
+            output('=')
             if isinstance(field, Node):
                 dump_tree(field, indent_level+1)
             elif isinstance(field, list):
-                stream.write('[')
+                output('[')
                 for j, child in enumerate(field):
                     if j:
-                        stream.write(',')
-                    stream.write('\n' + indent + '  ')
-                    dump_tree(child, indent_level+2)
+                        output(',')
+                    output('\n' + indent + '  ')
+                    if isinstance(child, Node):
+                        dump_tree(child, indent_level+2)
+                    else:
+                        output(repr(child))
                     
-                stream.write(']')
+                output(']')
             else:
-                stream.write(repr(field))
+                output(repr(field))
     # Otherwise, print all the fields on one line
     else:
-        stream.write(', '.join(repr(field) for field in node))
-    stream.write(')')
+        output(', '.join(repr(field) for field in node))
+    output(')')
             
 class Node(object):
     '''Base class for AST nodes.
