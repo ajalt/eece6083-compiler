@@ -4,7 +4,7 @@ The optimize_tree function is the main interface to the optimizer, which will
 optimize an AST in place. The function can optimize at two different levels.
 
 Level 1: Minimal optimization is performed. The resulting tree is guaranteed to
-be quivalent to the original.
+be equivalent to the original.
 
 Level 2: More extensive optimization is performed that may produce incorrect code.
 
@@ -30,9 +30,6 @@ class ConstantFolder(syntaxtree.TreeMutator):
         if isinstance(node, syntaxtree.Num):
             return node.n
         return None
-    
-    def is_literal(self, node):
-        return isinstance(node, (syntaxtree.Num, syntaxtree.Str))
     
     def visit_binary_op(self, node):
         # Fold children first so that we can fold parts of an expression even if
@@ -102,6 +99,9 @@ class ConstantPropagator(ConstantFolder):
         # than necessary, but without more reaching definition analysis, we
         # can't tell if an assignment is loop-invariant.
         self.stop_propagation = []
+        
+    def is_literal(self, node):
+        return isinstance(node, (syntaxtree.Num, syntaxtree.Str))
         
     def enter_scope(self):
         self.scopes.append({})
@@ -210,7 +210,7 @@ class ConstantPropagator(ConstantFolder):
         return node
     
 class DeadCodeEliminator(syntaxtree.TreeMutator):
-    '''Optimizer that elimiates dead branches, loops, assignemnts, and declarations.
+    '''Optimizer that eliminates dead branches, loops, assignments, and declarations.
     
     This optimizer does not construct explicit D-U chains or SSA structures.
     Instead, it works by walking the AST in reverse program order, which is a
@@ -395,7 +395,7 @@ if __name__ == '__main__':
     
     argparser.add_argument('filename', help='the file to parse')
     argparser.add_argument('-O', type=int, choices=[0, 1, 2], default=2,
-                           help='the level of optimizaion to apply to the program (default 2)')
+                           help='the level of optimization to apply to the program (default 2)')
     args = argparser.parse_args()
     ast = parser.parse_tokens(scanner.tokenize_file(args.filename))
     if typechecker.tree_is_valid(ast):
