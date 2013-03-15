@@ -1,5 +1,7 @@
 import itertools
 import sys
+import ast
+import types
 
 
 class TreeWalker(object):
@@ -110,22 +112,6 @@ class Node(object):
     uses. All Nodes have an optional 'token' attribute that is not factored into
     equality comparisons. '''
     __hash__ = None
-    __slots__ = ('token',)
-    
-    def __init__(self, *args, **kwargs):
-        if 'token' in kwargs:
-            self.token = kwargs['token']
-            del kwargs['token']
-        else:
-            self.token = None
-        if kwargs:
-            raise TypeError('Invalid keyword arguments: %r' % kwargs.keys())
-        if len(args) != len(self.__slots__) - len(Node.__slots__):
-            raise TypeError('%s() takes exactly %s arguments (%s given)' %
-                            (self.__class__.__name__, len(self.__slots__) -
-                            len(Node.__slots__), len(args)))
-        for slot, val in itertools.izip(self.__slots__, args):
-           setattr(self, slot, val)
     
     def __iter__(self):
         for slot in self.__slots__:
@@ -160,12 +146,41 @@ class Node(object):
                 yield slot, getattr(self, slot)
    
 
-# We have to use a metaclass here instead of inheritance since there's no easy
-# way for a child class to extend it's parent's __slots__.
 class NodeMeta(type):
     def __new__(mcls, name, bases, dict_):
-       dict_['__slots__'] += Node.__slots__
-       return type(name, (Node,) + bases, dict_)
+        dict_['__slots__'] += ('token',)
+        
+        # Warning: deep magicks ahead
+        
+        # We use Python's AST to dynamically create a python module
+        # that has a single function definition in it. 
+        f = ast.FunctionDef(name='__init__', decorator_list=[])
+        
+        # The function has the parameter self, one required parameter for
+        # each slot, and the optional token parameter.
+        args = ([ast.Name(id='self', ctx=ast.Param())] +
+                [ast.Name(id=slot, ctx=ast.Param()) for slot in dict_['__slots__']])
+        f.args = ast.arguments(args=args, vararg=None, kwarg=None,
+                               defaults=[ast.Name(id='None', ctx=ast.Load())])
+        
+        # The body of the function sets instance variables for each parameter.
+        f.body = [
+            ast.Assign(targets=[ast.Attribute(value=ast.Name(id='self', ctx=ast.Load()),
+                                              attr=slot,
+                                              ctx=ast.Store())],
+                       value=ast.Name(id=slot, ctx=ast.Load()))
+            for slot in dict_['__slots__']
+        ]
+        
+        # We then compile and execute the AST in the local scope, and use the
+        # result to create the class's __init__ method.
+        ast.fix_missing_locations(f)
+        exec(compile(ast.Module(body=[f]), '<string>', 'exec'))
+        
+        dict_['__init__'] = __init__
+        
+        # Note that we dynamically extend the class's MRO.
+        return type(name, (Node,) + bases, dict_)
 
 class Program(object):
     __metaclass__ = NodeMeta
