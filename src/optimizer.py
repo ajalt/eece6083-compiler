@@ -145,6 +145,8 @@ class ConstantPropagator(ConstantFolder):
                 
         
     def get_const(self, node):
+        # This overrides ConstantFolder's method to return the propagated value
+        # of variables.
         if isinstance(node, syntaxtree.Num):
             return node.n
         
@@ -190,9 +192,16 @@ class ConstantPropagator(ConstantFolder):
             if self.stop_propagation:
                 # Unset any variables we find if we're in a loop or branch
                 self.define_variable(node.target, None)
-            elif self.is_literal(node.value):
-                self.define_variable(node.target, node.value)
-
+            else:
+                if self.is_literal(node.value):
+                    self.define_variable(node.target, node.value)
+                # Expressions consisting of a single variable don't get picked
+                # up by the constant folder.
+                if isinstance(node.value, syntaxtree.Name):
+                    const = self.get_const(node.value)
+                    if const is not None:
+                        return syntaxtree.Assign(node.target, syntaxtree.Num(const),
+                                                 token=node.token)
         return node
     
     def visit_jump(self, node):
@@ -203,10 +212,16 @@ class ConstantPropagator(ConstantFolder):
     
     def visit_call(self, node):
         decl = self.get_var(node.func)
-        for param, arg in itertools.izip(decl.params, node.args):
+        for i, (param, arg) in enumerate(itertools.izip(decl.params, node.args)):
             # Unset variables sent as out parameters
             if param.direction == tokens.OUT:
                 self.define_variable(arg, None)
+            else:
+                # Propagate variables sent as in parameters
+                if isinstance(arg, syntaxtree.Name):
+                    value = self.get_var(arg)
+                    if value is not None:
+                        node.args[i] = syntaxtree.Num(value)
         return node
     
 class DeadCodeEliminator(syntaxtree.TreeMutator):
@@ -371,9 +386,9 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
     
 def optimize_tree(ast, level=1):
     if level == 0:
-        return
+        return ast
     if level == 1:
-        ConstantFolder().walk(ast)
+        return ConstantFolder().walk(ast)
     if level == 2:
         ConstantPropagator(print_errors=True).walk(ast)
         DeadCodeEliminator().walk(ast)
@@ -383,7 +398,7 @@ def optimize_tree(ast, level=1):
             eliminator = DeadCodeEliminator()
             eliminator.walk(ast)
             if not propagator.modified_tree or not eliminator.modified_tree:
-                return
+                return ast
     
 if __name__ == '__main__':
     import argparse
@@ -401,5 +416,4 @@ if __name__ == '__main__':
     if typechecker.tree_is_valid(ast):
         optimize_tree(ast, args.O)
         syntaxtree.dump_tree(ast)
-
     
