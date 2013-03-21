@@ -292,7 +292,7 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         # Manually walk the body in reverse to construct implicit D-U Chains.
         new_body = []
         for child in reversed(getattr(node, attrname)):
-            value = self._visit(child)
+            value = self.visit(child)
             if value is not None:
                 if isinstance(value, list):
                     new_body = value + new_body
@@ -322,7 +322,7 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         self.walk_body(node)
         self.walk_body(node, 'decls')
         
-        # If there's a return in the body, it's isn't in a branch, so it always
+        # If there's a return in the body, it isn't in a branch, so it always
         # terminates the procedure.
         try:
             del node.body[node.body.index(tokens.RETURN):]
@@ -373,14 +373,14 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
             return None
         self.walk_body(node, 'orelse')
         self.walk_body(node)
-        self._visit(node.test)
+        self.visit(node.test)
         
         return node
     
     def visit_for(self, node):
         if node.test == syntaxtree.Num('0'):
             return None
-        self._visit(node.test)
+        self.visit(node.test)
         self.walk_body(node)
         return node
     
