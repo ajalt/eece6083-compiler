@@ -53,7 +53,7 @@ class ParseError(Exception):
     
 class ParseFailedError(Exception): pass
 
-class _Parser(object):
+class Parser(object):
     def __init__(self, token_stream):
         self.error_encountered = False
         
@@ -481,43 +481,11 @@ def parse_tokens(token_stream):
     A node of type syntaxtree.Program will be returned, or a ValueError will be
     raised in the case of a syntax error in the input tokens.
     '''
-    return _Parser(token_stream).parse()
+    return Parser(token_stream).parse()
     
     
 if __name__ == '__main__':
     import argparse
-
-    def print_expression(node):
-        if isinstance(node, syntaxtree.BinaryOp):
-            print '(',
-            print_expression(node.left)
-            print node.op,
-            print_expression(node.right)
-            print ')',
-        elif isinstance(node, syntaxtree.UnaryOp):
-            print '(',
-            print node.op,
-            print_expression(node.operand)
-            print ')',
-        elif isinstance(node, syntaxtree.Num):
-            print node.n,
-        elif isinstance(node, syntaxtree.Name):
-            print node.id,
-        elif node == tokens.TRUE:
-            print 'true',
-        elif node == tokens.FALSE:
-            print 'false',
-        elif isinstance(node, syntaxtree.Subscript):
-            print '(',
-            print_expression(node.name),
-            print '[',
-            print_expression(node.index)
-            print ']',
-            print ')',
-        elif isinstance(node, syntaxtree.Str):
-            print node.s,
-        else:
-            print '?',
 
     argparser = argparse.ArgumentParser(description='Test the parser functionality. With the -e switch, treat the input as an expression to parse. Otherwise treat it as a filename to parse.')
     
@@ -525,7 +493,10 @@ if __name__ == '__main__':
     argparser.add_argument('-e', '--expression', action='store_true', help='parse an expression directly (make sure to surround the expression in quotes)')
     args = argparser.parse_args()
     if args.expression:
-        print_expression(_Parser(scanner.tokenize_string(args.filename_or_expression)).expression())
+        try:
+            syntaxtree.dump_tree(Parser(scanner.tokenize_string(args.filename_or_expression)).expression())
+        except ParseFailedError as err:
+            print err
     else:
         try:
             syntaxtree.dump_tree(parse_tokens(scanner.tokenize_file(args.filename_or_expression)))

@@ -10,7 +10,7 @@ from src import typechecker
 from src.typechecker import TypeCheckError
 
 def get_parser(src):
-    return parser._Parser(scanner.tokenize_string(src))
+    return parser.Parser(scanner.tokenize_string(src))
 
 def check_valid_type(src, expected):
     ast = get_parser(src).expression()

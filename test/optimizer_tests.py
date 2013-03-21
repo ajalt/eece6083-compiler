@@ -10,7 +10,7 @@ from src import optimizer
 from src.syntaxtree import *
 
 def get_parser(src):
-    return parser._Parser(scanner.tokenize_string(src))
+    return parser.Parser(scanner.tokenize_string(src))
 
 def parse_ex(exp):
     return get_parser(exp).expression()

@@ -10,7 +10,7 @@ from src import parser
 from src import syntaxtree as st
 
 def get_parser(src):
-    return parser._Parser(scanner.tokenize_string(src))
+    return parser.Parser(scanner.tokenize_string(src))
 
 # expression tests
 def parse_ex(exp):
@@ -493,4 +493,4 @@ def test_program_with_eof_error():
     parse_program(src)
 
 def test_parsing_file():
-    parser._Parser(scanner.tokenize_file(os.path.join('test', 'test_program.src'))).parse()
+    parser.Parser(scanner.tokenize_file(os.path.join('test', 'test_program.src'))).parse()
