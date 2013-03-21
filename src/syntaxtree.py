@@ -18,9 +18,8 @@ class TreeWalker(object):
     of nodes with registered functions will not be visited automatically. '''
     def __init__(self):
         self.visit_functions = {}
-        self.leave_functions = {}
 
-    def _visit(self, node):
+    def visit(self, node):
         if type(node) in self.visit_functions:
             return self.visit_functions[type(node)](node)
         elif isinstance(node, Node):
@@ -30,13 +29,13 @@ class TreeWalker(object):
     def visit_children(self, node):
         for field in node:
             if isinstance(field, Node):
-                self._visit(field)
+                self.visit(field)
             elif isinstance(field, list):
                 for child in field:
-                    self._visit(child)
+                    self.visit(child)
 
     def walk(self, node):
-        return self._visit(node)
+        return self.visit(node)
         
 class TreeMutator(TreeWalker):
     '''Class that will walk an AST and mutate the tree in place.
@@ -51,14 +50,14 @@ class TreeMutator(TreeWalker):
     def visit_children(self, node):
         for field_name, original_field in node.iter_fields():
             if isinstance(original_field, Node):
-                new_field = self._visit(original_field)
+                new_field = self.visit(original_field)
                 setattr(node, field_name, new_field)
                 if original_field != new_field:
                     self.modified_tree = True
             elif isinstance(original_field, list):
                 new_field = []
                 for child in original_field:
-                    value = self._visit(child)
+                    value = self.visit(child)
                     if value is not None:
                         if isinstance(value, list):
                             new_field.extend(value)
