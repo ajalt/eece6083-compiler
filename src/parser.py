@@ -417,7 +417,8 @@ class Parser(object):
         if self.token.type != tokens.IDENTIFIER:
             raise ParseError('Target of assignment must be a variable, not %s' % self.token.token, self.token)
         
-        target = syntaxtree.Name(self.token.token, token=self.token)
+        token = self.token
+        target = syntaxtree.Name(self.token.token, token=token)
         
         if self.next_token.type == tokens.OPENBRACKET:
             self.advance_token()
@@ -425,8 +426,15 @@ class Parser(object):
             target = syntaxtree.Subscript(target, index)
             self.match(tokens.CLOSEBRACKET)
         self.match(tokens.ASSIGN)
+        
         value = self.expression()
-        return syntaxtree.Assign(target, value)
+        
+        if self.token.lineno == token.lineno:
+            token = token._replace(end=self.token.end)
+        else:
+            token = token._replace(line=token.line[:-1] + ' ...',end=len(token.line) + 2)
+            
+        return syntaxtree.Assign(target, value, token=token)
     
     def if_statement(self):
         self.match(tokens.OPENPAREN)
