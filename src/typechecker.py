@@ -30,9 +30,9 @@ class TypeCheckError(Exception):
     def __repr__(self):
         return 'TypeCheckError(msg=%r, token=%r)' % (self.msg, self.token)
 
-class _Checker(syntaxtree.TreeWalker):
+class Checker(syntaxtree.TreeWalker):
     def __init__(self):
-        super(_Checker, self).__init__()
+        super(Checker, self).__init__()
         
         self.global_scope = {}
         self.scopes = [{}]
@@ -96,16 +96,23 @@ class _Checker(syntaxtree.TreeWalker):
         '''
         if isinstance(node, syntaxtree.BinaryOp):
             type = self.unify_node_types(node.left, node.right)
-            if type != tokens.INT and node.op in (tokens.AND, tokens.OR, tokens.NOT):
+            if type not in (tokens.BOOL, tokens.INT) and node.op in (tokens.AND, tokens.OR, tokens.NOT):
                 raise TypeCheckError('Bitwise operators only valid on integers, not %r' % type, node.token)
-            elif type not in (tokens.INT, tokens.FLOAT):
+            elif type not in (tokens.INT, tokens.FLOAT, tokens.BOOL):
                 raise TypeCheckError('Operator %r only valid on numbers' % node.op, node.token)
+            node.node_type = type
             return type
             
         if isinstance(node, syntaxtree.UnaryOp):
-            return self.get_type(node.operand)
+            type = self.get_type(node.operand)
+            if type == tokens.FLOAT and node.op == tokens.NOT:
+                raise TypeCheckError("Operator 'not' is not valid on floats", node.token)
+            node.node_type = type
+            return type
         
         if isinstance(node, syntaxtree.Num):
+            if node.n in (tokens.TRUE, tokens.FALSE):
+                return tokens.BOOL
             return tokens.FLOAT if '.' in node.n else tokens.INT
         
         if isinstance(node, syntaxtree.Name):
@@ -163,16 +170,13 @@ class _Checker(syntaxtree.TreeWalker):
     def unify_types(self, type_a, type_b):
         '''Return a type able to represent both given types, or raise an error if they are not compatible.
         '''
-        if type_a == tokens.BOOL:
-            type_a = tokens.INT
-        if type_b == tokens.BOOL:
-            type_b = tokens.INT
-        
         if type_a == type_b:
             return type_a
         
         if set((type_a, type_b)) == set((tokens.INT, tokens.FLOAT)):
             return tokens.FLOAT
+        if set((type_a, type_b)) == set((tokens.INT, tokens.BOOL)):
+            return tokens.BOOL
         
         raise TypeCheckError('Incompatible types %r and %r' % (type_a, type_b))
     
@@ -248,7 +252,7 @@ def tree_is_valid(node):
     Returns True if there are no semantic errors in the tree. If any errors are
     encountered, they are printed to stdout and False is returned.
     '''
-    checker = _Checker()
+    checker = Checker()
     checker.walk(node)
     return not checker.error_encountered
     

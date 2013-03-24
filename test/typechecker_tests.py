@@ -14,7 +14,7 @@ def get_parser(src):
 
 def check_valid_type(src, expected):
     ast = get_parser(src).expression()
-    checker = typechecker._Checker()
+    checker = typechecker.Checker()
     result = checker.get_type(ast)
     print result, expected
     assert not checker.error_encountered
@@ -23,7 +23,7 @@ def check_valid_type(src, expected):
 @raises(TypeCheckError)
 def check_invalid_type(src):
     ast = get_parser(src).expression()
-    checker = typechecker._Checker()
+    checker = typechecker.Checker()
     result = checker.get_type(ast)
     
 def test_literal_types():
@@ -31,8 +31,8 @@ def test_literal_types():
         ('1', tokens.INT),
         ('1.0', tokens.FLOAT),
         ('"s"', tokens.STRING_TYPE),
-        ('true', tokens.INT),
-        ('false', tokens.INT),
+        ('true', tokens.BOOL),
+        ('false', tokens.BOOL),
     ):
         yield check_valid_type, src, expected
         
@@ -45,7 +45,7 @@ def test_invalid_subscripts():
         yield check_invalid_type, '%s[0]' % name
 
 def check_valid_type_unification(left, right, expected):
-    checker = typechecker._Checker()
+    checker = typechecker.Checker()
     result = checker.unify_node_types(left, right)
     print 'Expected:', expected
     print 'Result:  ', result
@@ -63,7 +63,7 @@ def test_valid_type_unifications():
 
 @raises(TypeCheckError)
 def check_invalid_type_unification(left, right):
-    checker = typechecker._Checker()
+    checker = typechecker.Checker()
     result = checker.unify_node_types(left, right)
 
 def test_invalid_type_unifications():
@@ -76,14 +76,14 @@ def test_invalid_type_unifications():
 
 def check_valid_expression(src):
     ast = get_parser(src).expression()
-    checker = typechecker._Checker()
+    checker = typechecker.Checker()
     checker.get_type(ast)
     assert not checker.error_encountered
     
 @raises(TypeCheckError)
 def check_invalid_expression(src):
     ast = get_parser(src).expression()
-    checker = typechecker._Checker()
+    checker = typechecker.Checker()
     checker.get_type(ast)
     assert checker.error_encountered
     
@@ -98,6 +98,7 @@ def test_valid_bitwise_operatons():
     
 def test_valid_unary_operations():
     yield check_valid_expression, '-1'
+    yield check_valid_expression, 'not 1'
     yield check_valid_expression, '-1.0'
     
 def test_chained_expression():
@@ -109,12 +110,41 @@ def test_valid_parenthesized_subexpressions():
 def test_invalid_bitwise_operations():
     yield check_invalid_expression, '1.0 | 1.0'
     yield check_invalid_expression, '1.0 & 1.0'
+    yield check_invalid_expression, 'not 1.0'
 
 def test_invalid_binary_operations():
     for op in '+-/*|&':
         for left, right in itertools.permutations(('"string"', '"string"', '1'), 2):
             src = left + op + right
             yield check_invalid_expression, src
+            
+def check_node_type_annotation(src, node_type):
+    ast = get_parser(src).expression()
+    checker = typechecker.Checker()
+    checker.get_type(ast)
+    print 'Expected:', node_type
+    print 'Got:     ', ast.node_type
+    assert ast.node_type == node_type
+    
+def test_node_type_annotation():
+    for src, node_type in (
+        ('1 & 1', tokens.INT),
+        ('1 | 1', tokens.INT),
+        ('1 + 1', tokens.INT),
+        ('1 - 1', tokens.INT),
+        ('1 * 1', tokens.INT),
+        ('1 / 1', tokens.INT),
+        ('not 1', tokens.INT),
+        ('1 + 1.0', tokens.FLOAT),
+        ('1.0 + 1', tokens.FLOAT),
+        ('1.0 + 1.0', tokens.FLOAT),
+        ('true & 1', tokens.BOOL),
+        ('1 & false', tokens.BOOL),
+        ('true & false', tokens.BOOL),
+        ('true | false', tokens.BOOL),
+        ('not false', tokens.BOOL),
+    ):
+        yield check_node_type_annotation, src, node_type
             
 def check_program_is_valid(src):
     ast = get_parser(src).parse()
@@ -206,8 +236,9 @@ def test_valid_procedure_call_types():
     end program
     '''
     for type, arg in (
+        ('bool', 'true'),
+        ('bool', 'false'),
         ('bool', '1'),
-        ('bool', '1.0'),
         ('int', '1'),
         ('int', '1.0'),
         ('float', '1.0'),
