@@ -1,5 +1,6 @@
 import sys
 import heapq
+import collections
 
 import syntaxtree
 import tokens
@@ -34,7 +35,7 @@ class Heap(object):
     def put(self, item):
         heapq.heappush(self.queue, item)
         
-    def pop(self):
+    def get(self):
         return heapq.heappop(self.queue)
     
 class Register(int):
@@ -47,9 +48,9 @@ class RegisterHeap(Heap):
         self.size = 0
         self.max_size = 0
         
-    def pop(self):
+    def get(self):
         if self.queue:
-            return super(RegisterHeap, self).pop()
+            return super(RegisterHeap, self).get()
         self.size += 1
         self.max_size = max((self.size, self.max_size))
         return Register(self.size - 1)
@@ -57,10 +58,6 @@ class RegisterHeap(Heap):
     def clear(self):
         self.queue = []
         self.size = 0
-
-def is_op(node):
-    return (isinstance(node, syntaxtree.BinaryOp) or
-            isinstance(node, syntaxtree.UnaryOp))
 
 class CodeGenerator(syntaxtree.TreeWalker):
     def __init__(self, output_file=sys.stdout, generate_comments=False):
@@ -74,6 +71,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
             syntaxtree.Assign: self.visit_assign,
             syntaxtree.ProcDecl: self.visit_procdecl,
             syntaxtree.Program: self.visit_program,
+            syntaxtree.Call: self.visit_call,
+            syntaxtree.Subscript: self.visit_subscript,
         }
         
         self.output_file = output_file
@@ -81,19 +80,27 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.register_assignements = {}
         self.free_registers = RegisterHeap()
         
-        # Scopes store a map of names to memory locations
-        self.global_scope = {}
-        self.scopes = [{}]
+        self.global_memory_locations = {}
+        self.global_labels = {}
+        self.fp_offsets = [{}]
+        self.call_counts = collections.defaultdict(int)
+        
+    @staticmethod
+    def allocates_register(node):
+        '''Return whether or not a node allocates a register in its visit function.'''
+        return (isinstance(node, syntaxtree.BinaryOp) or
+                isinstance(node, syntaxtree.UnaryOp) or
+                isinstance(node, syntaxtree.Subscript))
         
     @property
-    def current_scope(self):
-        return self.scopes[-1]
-        
+    def current_fp_offset(self):
+        return self.fp_offsets[-1]
+    
     def enter_scope(self, local_vars=(), params=()):
-        self.scopes.append({})
+        self.fp_offsets.append({})
 
     def leave_scope(self):
-        self.scopes.pop()
+        self.fp_offsets.pop()
         self.register_assignements = {}
         self.free_registers.clear()
         
@@ -101,23 +108,24 @@ class CodeGenerator(syntaxtree.TreeWalker):
         print >> self.output_file, indent + text
         
     def get_memory_location(self, name):
-        pass
+        if name in self.global_memory_locations:
+            return str(self.global_memory_locations[name])
+        elif self.current_fp_offset[name] < 0:
+            # Parameters are passed by reference
+            return 'MM[FP%d]' % self.current_fp_offset[name]
+        else:
+            return 'FP + %d' % self.current_fp_offset[name]
         
     def get_register(self, node):
         try:
             return self.register_assignements[node]
         except KeyError:
-            reg = self.free_registers.pop()
-            if node in self.global_scope:
-                location = 'MM[%d]' % self.global_scope[node]
-            elif self.current_scope[node] < 0:
-                location = 'MM[FP%d]' % self.current_scope[node]
-            else:
-                location = 'MM[FP+%d]' % self.current_scope[node]
+            reg = self.free_registers.get()
+            value = 'MM[%s]' % self.get_memory_location(node)
             if self.generate_comments:
-                self.write('%s = %s /* %s */' % (reg, location, node.id))
+                self.write('%s = %s; /* %s */' % (reg, value, node.id))
             else:
-                self.write('%s = %s' % (reg, location))
+                self.write('%s = %s;' % (reg, value))
 
             self.register_assignements[node] = reg
             return reg
@@ -129,11 +137,11 @@ class CodeGenerator(syntaxtree.TreeWalker):
                 if decl.is_global:
                     # Since FP and SP both equal 0 at the start of the program,
                     # the offset is the static memory location.
-                    self.global_scope[decl.name] = sp_offset
+                    self.global_memory_locations[decl.name] = sp_offset
                 else:
-                    self.current_scope[decl.name] = sp_offset
+                    self.current_fp_offset[decl.name] = sp_offset
                 if decl.array_length:
-                    sp_offset += decl.array_length
+                    sp_offset += int(decl.array_length.n)
                 else:
                     sp_offset += 1
             else:
@@ -148,20 +156,21 @@ class CodeGenerator(syntaxtree.TreeWalker):
         sp_offset = self.calc_sp_offset(node)
         
         for i, param in enumerate(node.params, 2):
-            self.current_scope[param.var_decl.name] = -i
+            self.current_fp_offset[param.var_decl.name] = -i
         
         # Mangle global procedure names so that their definitions can be
         # shadowed by local declarations later.
         if node.is_global:
             label = '__global_%s' % node.name.id
+            self.global_labels[node.name] = label
         else:
             label = node.name.id
         self.write('\n%s:' % label, indent='')
         
         # Add to the offsets to account for the return address and the previous
         # FP.
-        self.write('FP = FP + %d' % (len(node.params) + 2))
-        self.write('SP = SP + %d' % (len(node.params) + sp_offset + 1))
+        self.write('FP = FP + %d;' % (len(node.params) + 2))
+        self.write('SP = SP + %d;' % (len(node.params) + sp_offset + 1))
         
         for statement in node.body:
             self.visit(statement)
@@ -169,19 +178,21 @@ class CodeGenerator(syntaxtree.TreeWalker):
         if self.generate_comments:
             self.write('/* Unwind the stack. */')
             
-        self.write('SP = FP - %d' % (len(node.params) + 2))
-        self.write('R[0] = MM[FP]')
-        self.write('FP = MM[FP-1]')
-        self.write('goto *(void *)R[0]')
+        self.write('SP = FP - %d;' % (len(node.params) + 2))
+        self.write('R[0] = MM[FP];')
+        self.write('FP = MM[FP-1];')
+        self.write('goto *(void *)R[0];')
         
         self.leave_scope()
         
     def visit_program(self, node):
+        self.write('#define true 1', indent='')
+        self.write('#define false 0\n', indent='')
         self.write('extern int R[];', indent='')
         self.write('int MM[1000];', indent='')
         self.write('int SP = 0;', indent='')
         self.write('int FP = 0;', indent='')
-        self.write('int main() {', indent='')
+        self.write('\nint main() {', indent='')
         self.write('goto %s;' % node.name.id)
 
         # Subtract 1 from the offset, since we don't have a previous FP to
@@ -191,7 +202,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.write('\n%s:' % node.name.id, indent='')
 
         if sp_offset > 0:
-            self.write('SP = SP + %d' % sp_offset )
+            self.write('SP = SP + %d;' % sp_offset )
         
         for statement in node.body:
             self.visit(statement)
@@ -202,7 +213,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.write('}\n', indent='')
         
         # Define the register size here now that we know how big it will get.
-        self.write('int R[%d];' % (self.free_registers.max_size + 1), indent='')
+        self.write('int R[%d];' % (self.free_registers.max_size), indent='')
 
     def visit_num(self, node):
         return node.n
@@ -213,14 +224,45 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def visit_name(self, node):
         return self.get_register(node)
     
+    def visit_subscript(self, node):
+        base = self.get_memory_location(node.name)
+        offset = self.visit(node.index)
+        reg = self.free_registers.get()
+        if self.generate_comments:
+            line = node.name.token.line
+            endpos = line.find(']', node.name.token.end)
+            if endpos > 0:
+                comment = line[node.name.token.start:endpos + 1]
+            else:
+                comment = '%s[...]' % node.name.id
+            
+            self.write('R[%d] = %s; /* %s */' % (reg, base, comment))
+        else:
+            self.write('R[%d] = %s;' % (reg, base))
+        self.write('R[%d] = R[%d] + %s' % (reg, reg, offset))
+        self.write('R[%d] = MM[R[%d]];' % (reg, reg))
+        return reg
+    
     def visit_unaryop(self, node):
         value = self.visit(node.operand)
         
-        if is_op(node.operand):
+        if self.allocates_register(node.operand):
             self.free_registers.put(value)
             
-        outreg = self.free_registers.pop()
-        self.write('%s = %s%s' % (outreg, node.op, value))
+        outreg = self.free_registers.get()
+        
+        # Trnaslate the not operator into the C equivalent, which is dependant
+        # on the data type.
+        op = node.op
+        if op == tokens.NOT:
+            if node.node_type == tokens.BOOL:
+                op = '!'
+                self.write("validateBooleanOp(%s, '%s', %s, %d);" %
+                           (0, op, value, node.token.lineno))
+            else:
+                op = '~'
+                
+        self.write('%s = %s%s;' % (outreg, op, value))
         return outreg
         
     def visit_binop(self, node):
@@ -228,14 +270,17 @@ class CodeGenerator(syntaxtree.TreeWalker):
         right = self.visit(node.right)
         
         # Free temporary registers.
-        if is_op(node.right):
+        if self.allocates_register(node.right):
             self.free_registers.put(right)
-        if is_op(node.left):
+        if self.allocates_register(node.left):
             self.free_registers.put(left)
         
-        outreg = self.free_registers.pop()
+        outreg = self.free_registers.get()
         
-        self.write('%s = %s %s %s' % (outreg, left, node.op, right))
+        if node.node_type == tokens.BOOL:
+            self.write("validateBooleanOp(%s, '%s', %s, %s);" %
+                       (left, node.op, right, node.token.lineno))
+        self.write('%s = %s %s %s;' % (outreg, left, node.op, right))
         return outreg
     
     def visit_assign(self, node):
@@ -247,10 +292,24 @@ class CodeGenerator(syntaxtree.TreeWalker):
         value = self.visit(node.value)
         outreg = self.visit(node.target)
         
-        if is_op(node.value):
+        if self.allocates_register(node.value):
             self.free_registers.put(value)
         
-        self.write('%s = %s' % (outreg, value))
+        self.write('%s = %s;' % (outreg, value))
+        
+    def visit_call(self, node):
+        call_label = self.global_labels.get(node.func, node.func)
+        return_label = 'return_from_%s_%s' % (call_label,
+                                              self.call_counts[call_label])
+        self.call_counts[call_label] += 1
+        
+        # Push the refrerences to the arguments right-to-left
+        for i, arg in enumerate(reversed(node.args)):
+            self.write('MM[SP+%d] = %s;' % (i + 1, self.get_memory_location(arg)))
+        self.write('MM[SP+%d] = FP;' % (i+2))
+        self.write('MM[SP+%d] (int)&&%s;' % (i+3, return_label))
+        self.write('goto %s;' % call_label)
+        self.write('%s:' % return_label, indent='')
             
     
         
@@ -259,17 +318,29 @@ if __name__ == '__main__':
     import parser
     import typechecker
     
+    #src = '''
+    #program test_program is
+    #    int i[5];
+    #    procedure proc (int j[5] in)
+    #        int k;
+    #    begin
+    #        k := j[20];
+    #    end procedure;
+    #begin
+    #    i[0] := 10;
+    #end program;
+    #'''
+    
     src = '''
     program test_program is
-        global int i;
+        int a[5];
         procedure proc (int j in)
             int k;
         begin
-            k := i;
-            k := k + i + j;
+            k := j;
         end procedure;
     begin
-        i := 20;
+        a[3] := 123;
     end program;
     '''
     
