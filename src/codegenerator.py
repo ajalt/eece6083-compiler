@@ -91,7 +91,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.last_subscript_address = None
         
     @staticmethod
-    def allocates_register(node):
+    def allocated_register(node):
         '''Return whether or not a node allocates a register in its visit function.'''
         return (isinstance(node, syntaxtree.BinaryOp) or
                 isinstance(node, syntaxtree.UnaryOp) or
@@ -209,11 +209,14 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.leave_scope()
         
     def visit_program(self, node):
+        self.write('#include "string.h"', indent='')
         self.write('#define true 1', indent='')
         self.write('#define false 0', indent='')
         self.write('#define MM_SIZE 32768\n', indent='') # 32K
         self.write('extern int R[];', indent='')
         self.write('int MM[MM_SIZE];', indent='')
+        self.write('float FLOAT_REG_1;', indent='') 
+        self.write('float FLOAT_REG_2;', indent='')
         self.write('int SP = 0;', indent='') # stack pointer
         self.write('int FP = 0;', indent='') # frame pointer
         self.write('int HP = MM_SIZE - 1;', indent='') # heap pointer
@@ -265,7 +268,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
             
         self.write('R[%d] = %s;%s' % (address_reg, base, comment))
         if offset > 0:
-            self.write('R[%d] = R[%d] + %s' % (address_reg, address_reg, offset))
+            self.write('R[%d] = R[%d] + %s;' % (address_reg, address_reg, offset))
         self.last_subscript_address = address_reg
         self.write('R[%d] = MM[R[%d]];' % (value_reg, address_reg))
         return value_reg
@@ -273,7 +276,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def visit_unaryop(self, node):
         value = self.visit(node.operand)
         
-        if self.allocates_register(node.operand):
+        if self.allocated_register(node.operand):
             self.free_registers.put(value)
             
         outreg = self.free_registers.get()
@@ -297,17 +300,29 @@ class CodeGenerator(syntaxtree.TreeWalker):
         right = self.visit(node.right)
         
         # Free temporary registers.
-        if self.allocates_register(node.right):
+        if self.allocated_register(node.right):
             self.free_registers.put(right)
-        if self.allocates_register(node.left):
+        if self.allocated_register(node.left):
             self.free_registers.put(left)
         
         outreg = self.free_registers.get()
         
-        if node.node_type == tokens.BOOL:
-            self.write("validateBooleanOp(%s, '%s', %s, %s);" %
-                       (left, node.op, right, node.token.lineno))
-        self.write('%s = %s %s %s;' % (outreg, left, node.op, right))
+        if node.node_type == tokens.FLOAT:
+            if isinstance(node.left, syntaxtree.Num):
+                self.write('FLOAT_REG_1 = %s;' % left)
+            else:
+                self.write('memcpy(&FLOAT_REG_1, &%s, sizeof(float));' % left)
+            if isinstance(node.right, syntaxtree.Num):
+                self.write('FLOAT_REG_2 = %s;' % right)
+            else:
+                self.write('memcpy(&FLOAT_REG_2, &%s, sizeof(float));' % right)
+            self.write('FLOAT_REG_1 = FLOAT_REG_1 %s FLOAT_REG_2;' % node.op)
+            self.write('memcpy(&%s, &FLOAT_REG_1, sizeof(float));' % outreg)
+        else:    
+            if node.node_type == tokens.BOOL:
+                self.write("validateBooleanOp(%s, '%s', %s, %s);" %
+                           (left, node.op, right, node.token.lineno))
+            self.write('%s = %s %s %s;' % (outreg, left, node.op, right))
         return outreg
     
     def visit_assign(self, node):
@@ -315,18 +330,21 @@ class CodeGenerator(syntaxtree.TreeWalker):
             t = node.token
             if self.generate_comments:
                 self.write('/* %s */' % t.line[t.start:t.end+1])
-            
+        
         value = self.visit(node.value)
         outreg = self.visit(node.target)
-        
-        self.write('%s = %s;' % (outreg, value))
+        if isinstance(node.value, syntaxtree.Num) and '.' in node.value.n:
+            self.write('FLOAT_REG_1 = %s;' % value)
+            self.write('memcpy(&%s, &FLOAT_REG_1, sizeof(float));' % outreg)
+        else:
+            self.write('%s = %s;' % (outreg, value))
         
         # Store array assignments immediatly to save registers
         if isinstance(node.target, syntaxtree.Subscript):
-            self.write('MM[%s] = %s' % (self.last_subscript_address, outreg))
+            self.write('MM[%s] = %s;' % (self.last_subscript_address, outreg))
             self.free_registers.put(self.last_subscript_address)
         
-        if self.allocates_register(node.value):
+        if self.allocated_register(node.value):
             self.free_registers.put(value)
         
     def visit_call(self, node):
@@ -401,20 +419,17 @@ if __name__ == '__main__':
     
     src = '''
     program test_program is
-        int a;
-        int b;
-        //int c;
-        //int d;
+        float a;
+        float b;
         //procedure proc (int j[6] in, int h out)
         //    int k;
         //begin
         //    proc(j, h);
         //end procedure;
     begin
-        b := 3;
-        for (a := 30; b < 31)
-            b := a + 1;
-        end for;
+        a := 11.0 + 12.0;
+        b := 22.0;
+        a := a + b;
     end program;
     '''
     
