@@ -111,17 +111,18 @@ class Node(object):
     uses. All Nodes have an optional 'token' attribute that is not factored into
     equality comparisons. '''
     __hash__ = None
+    __slots__ = ('token', 'node_type')
     
     def __iter__(self):
         for slot in self.__slots__:
-            if slot != 'token':
+            if slot not in Node.__slots__:
                 yield getattr(self, slot)
             
     def __len__(self):
         return len(self.__slots__)
             
     def __repr__(self):
-        arglist = ', '.join('%s=%r' % (s, getattr(self, s)) for s in self.__slots__ if s != 'token')
+        arglist = ', '.join('%s=%r' % (s, getattr(self, s)) for s in self.__slots__ if s not in Node.__slots__)
         return '%s(%s)' %(self.__class__.__name__, arglist)
     
     def __eq__(self, other):
@@ -141,13 +142,13 @@ class Node(object):
     def iter_fields(self):
         '''Iterate over tuples of (field_name, field)'''
         for slot in self.__slots__:
-            if slot != 'token':
+            if slot not in Node.__slots__:
                 yield slot, getattr(self, slot)
    
 
 class NodeMeta(type):
     def __new__(mcls, name, bases, dict_):
-        dict_['__slots__'] += ('token',)
+        dict_['__slots__'] += Node.__slots__
         
         # Warning: deep magicks ahead
         
@@ -160,7 +161,8 @@ class NodeMeta(type):
         args = ([ast.Name(id='self', ctx=ast.Param())] +
                 [ast.Name(id=slot, ctx=ast.Param()) for slot in dict_['__slots__']])
         f.args = ast.arguments(args=args, vararg=None, kwarg=None,
-                               defaults=[ast.Name(id='None', ctx=ast.Load())])
+                               defaults=[ast.Name(id='None', ctx=ast.Load()),
+                                         ast.Name(id='None', ctx=ast.Load())])
         
         # The body of the function sets instance variables for each parameter.
         f.body = [
