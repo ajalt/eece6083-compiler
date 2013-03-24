@@ -201,9 +201,14 @@ class Checker(syntaxtree.TreeWalker):
                                  (node.func.id, len(proc_decl.params), len(node.args)), node.token))
             
             for arg, param in zip(node.args, proc_decl.params):
-                if param.direction == tokens.OUT and not isinstance(arg, syntaxtree.Name):
-                    self.report_error(TypeCheckError('Argument to out parameter must be an identifier.', arg.token))
-                
+                if param.direction == tokens.OUT:
+                    if not isinstance(arg, syntaxtree.Name):
+                        self.report_error(TypeCheckError('Argument to out parameter must be an identifier.', arg.token))
+                    decl = self.get_decl(arg)
+                    if isinstance(decl, syntaxtree.Param):
+                        if decl.direction == tokens.OUT:
+                            # Allow forwarding of out parameters
+                            continue
                 try:
                     argtype = self.get_type(arg)
                 except TypeCheckError as err:
