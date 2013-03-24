@@ -5,10 +5,12 @@ import collections
 import syntaxtree
 import tokens
 
+# The code generator generates code using four types of memory addressing:
+# Absolute, Register, Register Offset, and Memory Indirect.
+#
 # The calling convention follows the __stdcall format: the callee unwinds the
 # stack, and arguments are pushed right-to-left.The stack grows up in the memory
-# space.
-# The format of the stack is:
+# space. The format of the stack is:
 #
 # --------------------- 
 #    Local variables    <- SP
@@ -63,13 +65,15 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def __init__(self, output_file=sys.stdout, generate_comments=False):
         super(CodeGenerator, self).__init__()
         self.visit_functions = {
+            syntaxtree.ProcDecl: self.visit_procdecl,
+            syntaxtree.Assign: self.visit_assign,
+            syntaxtree.If: self.visit_if,
+            syntaxtree.For: self.visit_for,
             syntaxtree.BinaryOp: self.visit_binop,
             syntaxtree.Num: self.visit_num,
             syntaxtree.Name: self.visit_name,
             syntaxtree.Str: self.visit_str,
             syntaxtree.UnaryOp: self.visit_unaryop,
-            syntaxtree.Assign: self.visit_assign,
-            syntaxtree.ProcDecl: self.visit_procdecl,
             syntaxtree.Program: self.visit_program,
             syntaxtree.Call: self.visit_call,
             syntaxtree.Subscript: self.visit_subscript,
@@ -83,7 +87,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.global_memory_locations = {}
         self.global_labels = {}
         self.fp_offsets = [{}]
-        self.call_counts = collections.defaultdict(int)
+        self.label_counts = collections.defaultdict(int)
+        self.last_subscript_address = None
         
     @staticmethod
     def allocates_register(node):
@@ -106,6 +111,11 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
     def write(self, text, indent='    '):
         print >> self.output_file, indent + text
+        
+    def create_label(self, title):
+        label = '%s_%d' % (title, self.label_counts[title])
+        self.label_counts[title] += 1
+        return label
         
     def get_memory_location(self, name):
         if name in self.global_memory_locations:
@@ -149,6 +159,16 @@ class CodeGenerator(syntaxtree.TreeWalker):
                 # procedure definitions.
                 self.visit(decl)
         return sp_offset
+    
+    def store_variables(self, names):
+        for name in names:
+            reg = self.get_register(name)
+            location = self.get_memory_location(name)
+            if self.generate_comments:
+                comment = ' /* store %s */' % name.id
+            else:
+                comment = ''
+            self.write('MM[%s] = %s;%s' % (location, reg, comment))
         
     def visit_procdecl(self, node):
         self.enter_scope()
@@ -175,6 +195,9 @@ class CodeGenerator(syntaxtree.TreeWalker):
         for statement in node.body:
             self.visit(statement)
             
+        outparams = (p.var_decl.name for p in node.params if p.direction == tokens.OUT)
+        self.store_variables(outparams)
+            
         if self.generate_comments:
             self.write('/* Unwind the stack. */')
             
@@ -187,11 +210,13 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
     def visit_program(self, node):
         self.write('#define true 1', indent='')
-        self.write('#define false 0\n', indent='')
+        self.write('#define false 0', indent='')
+        self.write('#define MM_SIZE 32768\n', indent='') # 32K
         self.write('extern int R[];', indent='')
-        self.write('int MM[1000];', indent='')
-        self.write('int SP = 0;', indent='')
-        self.write('int FP = 0;', indent='')
+        self.write('int MM[MM_SIZE];', indent='')
+        self.write('int SP = 0;', indent='') # stack pointer
+        self.write('int FP = 0;', indent='') # frame pointer
+        self.write('int HP = MM_SIZE - 1;', indent='') # heap pointer
         self.write('\nint main() {', indent='')
         self.write('goto %s;' % node.name.id)
 
@@ -227,21 +252,23 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def visit_subscript(self, node):
         base = self.get_memory_location(node.name)
         offset = self.visit(node.index)
-        reg = self.free_registers.get()
+        address_reg = self.free_registers.get()
+        value_reg = self.free_registers.get()
+        
         if self.generate_comments:
             line = node.name.token.line
             endpos = line.find(']', node.name.token.end)
             if endpos > 0:
-                comment = line[node.name.token.start:endpos + 1]
+                comment = ' /* %s */' % line[node.name.token.start:endpos + 1]
             else:
-                comment = '%s[...]' % node.name.id
+                comment = ' /* %s[...] */' % node.name.id
             
-            self.write('R[%d] = %s; /* %s */' % (reg, base, comment))
-        else:
-            self.write('R[%d] = %s;' % (reg, base))
-        self.write('R[%d] = R[%d] + %s' % (reg, reg, offset))
-        self.write('R[%d] = MM[R[%d]];' % (reg, reg))
-        return reg
+        self.write('R[%d] = %s;%s' % (address_reg, base, comment))
+        if offset > 0:
+            self.write('R[%d] = R[%d] + %s' % (address_reg, address_reg, offset))
+        self.last_subscript_address = address_reg
+        self.write('R[%d] = MM[R[%d]];' % (value_reg, address_reg))
+        return value_reg
     
     def visit_unaryop(self, node):
         value = self.visit(node.operand)
@@ -292,55 +319,102 @@ class CodeGenerator(syntaxtree.TreeWalker):
         value = self.visit(node.value)
         outreg = self.visit(node.target)
         
+        self.write('%s = %s;' % (outreg, value))
+        
+        # Store array assignments immediatly to save registers
+        if isinstance(node.target, syntaxtree.Subscript):
+            self.write('MM[%s] = %s' % (self.last_subscript_address, outreg))
+            self.free_registers.put(self.last_subscript_address)
+        
         if self.allocates_register(node.value):
             self.free_registers.put(value)
         
-        self.write('%s = %s;' % (outreg, value))
-        
     def visit_call(self, node):
-        call_label = self.global_labels.get(node.func, node.func)
-        return_label = 'return_from_%s_%s' % (call_label,
-                                              self.call_counts[call_label])
-        self.call_counts[call_label] += 1
+        call_label = self.global_labels.get(node.func, node.func.id)
+        return_label = self.create_label('return_from_%s' % call_label)
+        
+        if self.generate_comments:
+            line = node.func.token.line
+            startpos = node.func.token.start
+            endpos = line.index(';', startpos)
+            self.write('/* %s */' % line[startpos:endpos])
+        
+        self.store_variables(self.register_assignements)
+        
+        self.write('MM[SP + 1] = FP;')
+        self.write('MM[SP + 2] = (int)&&%s;' % return_label)
         
         # Push the refrerences to the arguments right-to-left
+        reg = self.free_registers.get()
         for i, arg in enumerate(reversed(node.args)):
-            self.write('MM[SP+%d] = %s;' % (i + 1, self.get_memory_location(arg)))
-        self.write('MM[SP+%d] = FP;' % (i+2))
-        self.write('MM[SP+%d] (int)&&%s;' % (i+3, return_label))
+            self.write('%s = %s;' % (reg, self.get_memory_location(arg)))
+            self.write('MM[SP + %d] = %s;' % (i + 3, reg))
+        
         self.write('goto %s;' % call_label)
-        self.write('%s:' % return_label, indent='')
+        self.write('\n%s:' % return_label, indent='')
             
-    
+        self.register_assignements.clear()
+        
+    def visit_if(self, node):
+        test_reg = self.visit(node.test)
+        endif_label = self.create_label('__endif')
+        
+        if node.orelse:
+            target_label = self.create_label('__else')
+        
+        self.write('if (!%s) goto %s;' % (test_reg, target_label)) 
+        for statement in node.body:
+            self.visit(statement)
+            
+        if node.orelse:
+            self.write('goto %s;' % endif_label)
+            self.write('\n%s:' % target_label, indent='')
+            for statement in node.orelse:
+                self.visit(statement)
+            
+        self.write('\n%s:' % endif_label, indent='')
+        
+    def visit_for(self, node):
+        self.visit(node.assignment)
+        start_label = self.create_label('__for')
+        end_label = self.create_label('__endfor')
+        
+        self.write('\n%s:' % start_label)
+        # XXX: Putting the test blindly inside the label will cause the program
+        # to load the variable from memory at the start of the loop, with
+        # results in an infinite loop if the test variable is unreferenced
+        # before the loop. Programs testing uninitialized variables are
+        # illformed anyway. A workaround would be to load all variables at the
+        # start of a function.
+        test_reg = self.visit(node.test)
+        self.write('if (!%s) goto %s;' % (test_reg, end_label))
+        
+        for statement in node.body:
+            self.visit(statement)
+            
+        self.write('\n%s:' % end_label)
         
 if __name__ == '__main__':
     import scanner
     import parser
     import typechecker
     
-    #src = '''
-    #program test_program is
-    #    int i[5];
-    #    procedure proc (int j[5] in)
-    #        int k;
-    #    begin
-    #        k := j[20];
-    #    end procedure;
-    #begin
-    #    i[0] := 10;
-    #end program;
-    #'''
-    
     src = '''
     program test_program is
-        int a[5];
-        procedure proc (int j in)
-            int k;
-        begin
-            k := j;
-        end procedure;
+        int a;
+        int b;
+        //int c;
+        //int d;
+        //procedure proc (int j[6] in, int h out)
+        //    int k;
+        //begin
+        //    proc(j, h);
+        //end procedure;
     begin
-        a[3] := 123;
+        b := 3;
+        for (a := 30; b < 31)
+            b := a + 1;
+        end for;
     end program;
     '''
     
