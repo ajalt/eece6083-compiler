@@ -1,3 +1,5 @@
+import itertools
+
 from nose.tools import raises
 
 from src import scanner
@@ -13,10 +15,14 @@ def get_parser(src):
     return parser.Parser(scanner.tokenize_string(src))
 
 def parse_ex(exp):
-    return get_parser(exp).expression()
+    ast = get_parser(exp).expression()
+    typechecker.Checker().get_type(ast)
+    return ast
 
 def parse_prog(src):
-    return parser.parse_tokens(scanner.tokenize_string(src))
+    ast = parser.parse_tokens(scanner.tokenize_string(src))
+    assert typechecker.tree_is_valid(ast)
+    return ast
 
 def fold_ex(exp):
     return optimizer.ConstantFolder().walk(parse_ex(exp))
@@ -37,18 +43,33 @@ def test_folding_binops():
         ('/', '0'),
         ('&', '2'),
         ('|', '3'),
-        ('<', '1'),
-        ('>', '0'),
-        ('<=', '1'),
-        ('>=', '0'),
-        ('==', '0'),
+        ('<',  tokens.TRUE),
+        ('>', tokens.FALSE),
+        ('<=', tokens.TRUE),
+        ('>=', tokens.FALSE),
+        ('==', tokens.FALSE),
     ):
         src = '2 %s 3' % operator
         expected = st.Num(result)
         yield check_folding_expression, src, expected
         
-def test_folding_unary_op():
+def test_folding_boolean_binops():
+    bools = (tokens.FALSE, tokens.TRUE)
+    testops = (tokens.AND, tokens.OR)
+    pythonops = ('and', 'or')
+    
+    for a, b, op in itertools.product((0,1),(0,1),(0,1)):
+        src = '%s %s %s' % (bools[a], testops[op], bools[b])
+        expected = bools[eval('%s %s %s' % (a, pythonops[op], b))]
+        yield check_folding_expression, src, st.Num(expected)
+        
+def test_folding_unary_minus():
     check_folding_expression('-3', st.Num('-3'))
+    
+def test_folding_unary_not():
+    yield check_folding_expression, 'not 4294967280', st.Num('15')
+    yield check_folding_expression, 'not true', st.Num(tokens.FALSE)
+    yield check_folding_expression, 'not false', st.Num(tokens.TRUE)
     
     
 # -- ConstantPropagator tests--

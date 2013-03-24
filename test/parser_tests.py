@@ -33,10 +33,10 @@ def test_str():
     assert ast == st.Str('"str"')
 
 def test_literal_true():
-    assert parse_ex('true') == st.Num('1')
+    assert parse_ex('true') == st.Num(tokens.TRUE)
 
 def test_literal_false():
-    assert parse_ex('false') == st.Num('0')
+    assert parse_ex('false') == st.Num(tokens.FALSE)
 
 def test_unary_minus():
     ast = parse_ex('-1')

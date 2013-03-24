@@ -98,11 +98,11 @@ class Parser(object):
             
         class TrueVal(Symbol):
             def prefix(self):
-                return syntaxtree.Num('1', token=self.parser.token)
+                return syntaxtree.Num(tokens.TRUE, token=self.parser.token)
             
         class FalseVal(Symbol):
             def prefix(self):
-                return syntaxtree.Num('0', token=self.parser.token)
+                return syntaxtree.Num(tokens.FALSE, token=self.parser.token)
 
         class Operator(Symbol):
             def __init__(self, value, precedence):

@@ -3,12 +3,13 @@
 The optimize_tree function is the main interface to the optimizer, which will
 optimize an AST in place. The function can optimize at two different levels.
 
-Level 1: Minimal optimization is performed. The resulting tree is guaranteed to
-be equivalent to the original.
+Level 1: Minimal optimization is performed.
 
-Level 2: More extensive optimization is performed that may produce incorrect code.
+Level 2: More extensive optimization is performed that may produce code that is
+not equivalent to the original code.
 
-The optimizer assumes the AST is both syntactically and semantically valid.'''
+The optimizer assumes the AST is both syntactically and semantically valid.
+'''
 
 import itertools
 
@@ -28,6 +29,10 @@ class ConstantFolder(syntaxtree.TreeMutator):
     def get_const(self, node):
         '''Return the value of a constant AST node, or None if the node is not a number.'''
         if isinstance(node, syntaxtree.Num):
+            if node.n == tokens.TRUE:
+                return 'True'
+            if node.n == tokens.FALSE:
+                return 'False'
             return node.n
         return None
     
@@ -40,11 +45,17 @@ class ConstantFolder(syntaxtree.TreeMutator):
         if left is not None:
             right = self.get_const(node.right)
             if right is not None:
-                result = eval('%s %s %s' % (left, node.op, right))
+                op = node.op
+                if node.node_type == tokens.BOOL:
+                    if op == tokens.AND:
+                        op = 'and'
+                    elif op == tokens.OR:
+                        op = 'or'
+                result = eval('%s %s %s' % (left, op, right))
                 if result is True:
-                    return syntaxtree.Num('1')
+                    return syntaxtree.Num('true')
                 if result is False:
-                    return syntaxtree.Num('0')
+                    return syntaxtree.Num('false')
                 return syntaxtree.Num(str(result))
         return node
     
@@ -53,7 +64,16 @@ class ConstantFolder(syntaxtree.TreeMutator):
         
         operand = self.get_const(node.operand)
         if operand is not None:
-            return syntaxtree.Num(str(eval('%s %s' % (node.op, operand))))
+            op = node.op
+            if op == tokens.NOT and node.node_type == tokens.INT:
+                # 32-bit NOT
+                return syntaxtree.Num(str(eval('(~%s) & 0xffffffff' % operand)))
+            result = eval('%s %s' % (node.op, operand))
+            if result is True:
+                return syntaxtree.Num('true')
+            if result is False:
+                return syntaxtree.Num('false')
+            return syntaxtree.Num(str(result))
         return node
 
 class ConstantPropagator(ConstantFolder):
@@ -416,4 +436,3 @@ if __name__ == '__main__':
     if typechecker.tree_is_valid(ast):
         optimize_tree(ast, args.O)
         syntaxtree.dump_tree(ast)
-    
