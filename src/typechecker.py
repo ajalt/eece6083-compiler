@@ -197,18 +197,25 @@ class Checker(syntaxtree.TreeWalker):
             self.report_error(err)
         else:
             if len(node.args) != len(proc_decl.params):
-                self.report_error(TypeCheckError('Procedure %r takes exactly %s arguments (%s given)' %
-                                 (node.func.id, len(proc_decl.params), len(node.args)), node.token))
+                self.report_error(TypeCheckError(
+                    'Procedure %r takes exactly %s arguments (%s given)' %
+                        (node.func.id, len(proc_decl.params), len(node.args)),node.token))
             
             for arg, param in zip(node.args, proc_decl.params):
                 if param.direction == tokens.OUT:
                     if not isinstance(arg, syntaxtree.Name):
-                        self.report_error(TypeCheckError('Argument to out parameter must be an identifier.', arg.token))
-                    decl = self.get_decl(arg)
-                    if isinstance(decl, syntaxtree.Param):
-                        if decl.direction == tokens.OUT:
-                            # Allow forwarding of out parameters
-                            continue
+                        self.report_error(TypeCheckError(
+                            'Argument to out parameter must be an identifier.', arg.token))
+                        continue
+                    try:
+                        decl = self.get_decl(arg)
+                    except TypeCheckError as err:
+                        self.report_error(err)
+                    else:
+                        if isinstance(decl, syntaxtree.Param):
+                            if decl.direction == tokens.OUT:
+                                # Allow forwarding of out parameters
+                                continue
                 try:
                     argtype = self.get_type(arg)
                 except TypeCheckError as err:
