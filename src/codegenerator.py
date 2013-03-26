@@ -85,8 +85,10 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.free_registers = RegisterHeap()
         
         self.global_memory_locations = {}
-        self.global_labels = {}
         self.fp_offsets = [{}]
+        self.proc_decls = [{}]
+        self.global_proc_decls = {}
+        self.current_procedure = None
         self.label_counts = collections.defaultdict(int)
         self.last_subscript_address = None
         
@@ -101,28 +103,56 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def current_fp_offset(self):
         return self.fp_offsets[-1]
     
-    def enter_scope(self, local_vars=(), params=()):
+    def set_proc_decl(self, name, decl):
+        if decl.is_global:
+            self.global_proc_decls[name] = decl
+        else:
+            self.proc_decls[-1][name] = decl
+            
+    def get_proc_decl(self, name):
+        if name in self.global_proc_decls:
+            return self.global_proc_decls[name]
+        else:
+            return self.proc_decls[-1][name]
+    
+    def enter_scope(self):
         self.fp_offsets.append({})
+        self.proc_decls.append({})
 
     def leave_scope(self):
         self.fp_offsets.pop()
+        self.proc_decls.pop()
         self.register_assignements = {}
         self.free_registers.clear()
         
     def write(self, text, indent='    '):
         print >> self.output_file, indent + text
         
-    def create_label(self, title):
+    def create_call_label(self, title):
         label = '%s_%d' % (title, self.label_counts[title])
         self.label_counts[title] += 1
         return label
+    
+    def get_label(self, name):
+        decl = self.get_proc_decl(name)
+        if decl.is_global:
+            # Mangle global procedure names so that their definitions can be
+            # shadowed by local declarations later.
+            return '__global_%s' % name.id
+        return name.id
         
     def get_memory_location(self, name):
         if name in self.global_memory_locations:
             return str(self.global_memory_locations[name])
         elif self.current_fp_offset[name] < 0:
-            # Parameters are passed by reference
-            return 'MM[FP%d]' % self.current_fp_offset[name]
+            dir = {p.var_decl.name:p.direction for p in 
+                    self.get_proc_decl(self.current_procedure).params}[name]
+            if dir == tokens.OUT:
+                # Out parameters are passed by reference
+                return 'MM[FP%d]' % self.current_fp_offset[name]
+            else:
+                # In parameters are passed by value
+                return 'FP%d' % self.current_fp_offset[name]
         else:
             return 'FP + %d' % self.current_fp_offset[name]
         
@@ -171,21 +201,19 @@ class CodeGenerator(syntaxtree.TreeWalker):
             self.write('MM[%s] = %s;%s' % (location, reg, comment))
         
     def visit_procdecl(self, node):
+        # Add name to parent scope
+        self.set_proc_decl(node.name, node)
         self.enter_scope()
+        # Add name to current scope to allow recursion
+        self.set_proc_decl(node.name, node)
+        self.current_procedure = node.name
         
         sp_offset = self.calc_sp_offset(node)
         
         for i, param in enumerate(node.params, 2):
             self.current_fp_offset[param.var_decl.name] = -i
         
-        # Mangle global procedure names so that their definitions can be
-        # shadowed by local declarations later.
-        if node.is_global:
-            label = '__global_%s' % node.name.id
-            self.global_labels[node.name] = label
-        else:
-            label = node.name.id
-        self.write('\n%s:' % label, indent='')
+        self.write('\n%s:' % self.get_label(node.name), indent='')
         
         # Add to the offsets to account for the return address and the previous
         # FP.
@@ -195,7 +223,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
         for statement in node.body:
             self.visit(statement)
             
-        outparams = (p.var_decl.name for p in node.params if p.direction == tokens.OUT)
+        outparams = (p.var_decl.name for p in node.params
+                        if p.direction == tokens.OUT)
         self.store_variables(outparams)
             
         if self.generate_comments:
@@ -348,8 +377,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
             self.free_registers.put(value)
         
     def visit_call(self, node):
-        call_label = self.global_labels.get(node.func, node.func.id)
-        return_label = self.create_label('return_from_%s' % call_label)
+        call_label = self.get_label(node.func)
+        return_label = self.create_call_label('return_from_%s' % call_label)
         
         if self.generate_comments:
             line = node.func.token.line
@@ -364,9 +393,14 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
         # Push the refrerences to the arguments right-to-left
         reg = self.free_registers.get()
-        for i, arg in enumerate(reversed(node.args)):
-            self.write('%s = %s;' % (reg, self.get_memory_location(arg)))
-            self.write('MM[SP + %d] = %s;' % (i + 3, reg))
+        decl = self.get_proc_decl(node.func)
+        for i, (arg, param) in enumerate(reversed(zip(node.args, decl.params))):
+            if param.direction == tokens.OUT:
+                self.write('%s = %s;' % (reg, self.get_memory_location(arg)))
+                valuereg = reg
+            else:
+                valuereg = self.visit(arg)
+            self.write('MM[SP + %d] = %s;' % (i + 3, valuereg))
         
         self.write('goto %s;' % call_label)
         self.write('\n%s:' % return_label, indent='')
@@ -375,10 +409,12 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
     def visit_if(self, node):
         test_reg = self.visit(node.test)
-        endif_label = self.create_label('__endif')
+        endif_label = self.create_call_label('__endif')
         
         if node.orelse:
-            target_label = self.create_label('__else')
+            target_label = self.create_call_label('__else')
+        else:
+            target_label = endif_label
         
         self.write('if (!%s) goto %s;' % (test_reg, target_label)) 
         for statement in node.body:
@@ -394,8 +430,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
     def visit_for(self, node):
         self.visit(node.assignment)
-        start_label = self.create_label('__for')
-        end_label = self.create_label('__endfor')
+        start_label = self.create_call_label('__for')
+        end_label = self.create_call_label('__endfor')
         
         self.write('\n%s:' % start_label)
         # XXX: Putting the test blindly inside the label will cause the program
@@ -412,35 +448,20 @@ class CodeGenerator(syntaxtree.TreeWalker):
             
         self.write('\n%s:' % end_label)
         
+        
 if __name__ == '__main__':
+    import argparse
     import scanner
     import parser
     import typechecker
+
+    argparser = argparse.ArgumentParser(description='Test the type code generation functionality.')
     
-    src = '''
-    program test_program is
-        float a;
-        float b;
-        //procedure proc (int j[6] in, int h out)
-        //    int k;
-        //begin
-        //    proc(j, h);
-        //end procedure;
-    begin
-        a := 11.0 + 12.0;
-        b := 22.0;
-        a := a + b;
-    end program;
-    '''
-    
-    ast = parser.parse_tokens(scanner.tokenize_string(src))
+    argparser.add_argument('filename', help='the file to parse')
+    #argparser.add_argument('-Vasm', '--verbose-assembly', action='store_true', default=False,
+    #                       help='Add comments to the generated code')
+    args = argparser.parse_args()
+
+    ast = parser.parse_tokens(scanner.tokenize_file(args.filename))
     if typechecker.tree_is_valid(ast):
         CodeGenerator(generate_comments=True).walk(ast)
-    
-    
-    
-        
-        
-        
-        
-        
