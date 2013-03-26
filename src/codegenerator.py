@@ -29,6 +29,120 @@ import tokens
 # ---------------------
 # 
 
+PROLOG = '''
+#include "string.h"
+#define true 1
+#define false 0
+#define MM_SIZE 32768
+
+extern int R[];
+int MM[MM_SIZE];
+float FLOAT_REG_1; 
+float FLOAT_REG_2;
+int SP = 0; /* stack pointer */
+int FP = 0; /* frame pointer */
+int HP = MM_SIZE - 1; /* heap pointer */
+
+int main() {
+'''.strip()
+
+RUNTIME = '''
+getInteger:
+    R[0] = getInteger();
+    MM[MM[FP+1]] = R[0]; 
+    R[0] = MM[FP + 3];
+    FP = MM[FP + 2];
+    goto *(void *)R[0];
+    
+putInteger:
+    R[0] = MM[FP-2];
+    putInteger(R[0]);
+    R[0] = MM[FP+3];
+    FP = MM[FP+2];
+    goto *(void *)R[0];
+'''
+TODO = '''
+getBool:
+    FP = SP + 3;
+    SP = SP + 3;
+    R[0] = MM[MM[FP-2]]; /* x */
+    MM[MM[FP-2]] = R[0]; /* store x */
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+getInteger:
+    FP = SP + 3;
+    SP = SP + 3;
+    R[0] = MM[MM[FP-2]]; /* x */
+    MM[MM[FP-2]] = R[0]; /* store x */
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+getFloat:
+    FP = SP + 3;
+    SP = SP + 3;
+    R[0] = MM[MM[FP-2]]; /* x */
+    MM[MM[FP-2]] = R[0]; /* store x */
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+getString:
+    FP = SP + 3;
+    SP = SP + 3;
+    R[0] = MM[MM[FP-2]]; /* x */
+    MM[MM[FP-2]] = R[0]; /* store x */
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+putBool:
+    FP = SP + 3;
+    SP = SP + 3;
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+putInteger:
+    FP = SP + 3;
+    SP = SP + 3;
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+putFloat:
+    FP = SP + 3;
+    SP = SP + 3;
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+
+putString:
+    FP = SP + 3;
+    SP = SP + 3;
+    /* Unwind the stack. */
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+'''
+
 class Heap(object):
     def __init__(self, items):
         self.queue = items
@@ -217,7 +331,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
         # Add to the offsets to account for the return address and the previous
         # FP.
-        self.write('FP = FP + %d;' % (len(node.params) + 2))
+        self.write('FP = SP + %d;' % (len(node.params) + 2))
         self.write('SP = SP + %d;' % (len(node.params) + sp_offset + 1))
         
         for statement in node.body:
@@ -238,19 +352,9 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.leave_scope()
         
     def visit_program(self, node):
-        self.write('#include "string.h"', indent='')
-        self.write('#define true 1', indent='')
-        self.write('#define false 0', indent='')
-        self.write('#define MM_SIZE 32768\n', indent='') # 32K
-        self.write('extern int R[];', indent='')
-        self.write('int MM[MM_SIZE];', indent='')
-        self.write('float FLOAT_REG_1;', indent='') 
-        self.write('float FLOAT_REG_2;', indent='')
-        self.write('int SP = 0;', indent='') # stack pointer
-        self.write('int FP = 0;', indent='') # frame pointer
-        self.write('int HP = MM_SIZE - 1;', indent='') # heap pointer
-        self.write('\nint main() {', indent='')
+        self.write(PROLOG, indent='')
         self.write('goto %s;' % node.name.id)
+        self.write(RUNTIME, indent='')
 
         # Subtract 1 from the offset, since we don't have a previous FP to
         # account for.
@@ -458,10 +562,15 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description='Test the type code generation functionality.')
     
     argparser.add_argument('filename', help='the file to parse')
+    argparser.add_argument('-r', '--include-runtime', action='store_true',
+                            help='include definitions of the runtime functions')
     #argparser.add_argument('-Vasm', '--verbose-assembly', action='store_true', default=False,
     #                       help='Add comments to the generated code')
     args = argparser.parse_args()
 
-    ast = parser.parse_tokens(scanner.tokenize_file(args.filename))
+    ast = parser.parse_tokens(scanner.tokenize_file(args.filename),
+                              include_runtime=args.include_runtime)
     if typechecker.tree_is_valid(ast):
+        import optimizer
+        optimizer.optimize_tree(ast,2)
         CodeGenerator(generate_comments=True).walk(ast)
