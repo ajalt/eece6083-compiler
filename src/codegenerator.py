@@ -310,7 +310,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
             
         outreg = self.free_registers.get()
         
-        # Trnaslate the not operator into the C equivalent, which is dependant
+        # Translate the not operator into the C equivalent, which is dependent
         # on the data type.
         op = node.op
         if op == tokens.NOT:
@@ -368,7 +368,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         else:
             self.write('%s = %s;' % (outreg, value))
         
-        # Store array assignments immediatly to save registers
+        # Store array assignments immediately to save registers
         if isinstance(node.target, syntaxtree.Subscript):
             self.write('MM[%s] = %s;' % (self.last_subscript_address, outreg))
             self.free_registers.put(self.last_subscript_address)
@@ -391,7 +391,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.write('MM[SP + 1] = FP;')
         self.write('MM[SP + 2] = (int)&&%s;' % return_label)
         
-        # Push the refrerences to the arguments right-to-left
+        # Push the references to the arguments right-to-left
         reg = self.free_registers.get()
         decl = self.get_proc_decl(node.func)
         for i, (arg, param) in enumerate(reversed(zip(node.args, decl.params))):
@@ -438,7 +438,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         # to load the variable from memory at the start of the loop, with
         # results in an infinite loop if the test variable is unreferenced
         # before the loop. Programs testing uninitialized variables are
-        # illformed anyway. A workaround would be to load all variables at the
+        # ill formed anyway. A workaround would be to load all variables at the
         # start of a function.
         test_reg = self.visit(node.test)
         self.write('if (!%s) goto %s;' % (test_reg, end_label))
