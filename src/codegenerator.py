@@ -46,21 +46,22 @@ int HP = MM_SIZE - 1; /* heap pointer */
 int main() {
 '''.strip()
 
-RUNTIME = '''
-getInteger:
+runtime_functions = {
+'getInteger':'''
     R[0] = getInteger();
     MM[MM[FP+1]] = R[0]; 
     R[0] = MM[FP + 3];
     FP = MM[FP + 2];
     goto *(void *)R[0];
-    
-putInteger:
+'''.strip('\n'),
+'putInteger':'''
     R[0] = MM[FP-2];
     putInteger(R[0]);
     R[0] = MM[FP+3];
     FP = MM[FP+2];
     goto *(void *)R[0];
-'''
+'''.strip('\n'),
+}
 TODO = '''
 getBool:
     FP = SP + 3;
@@ -317,7 +318,15 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def visit_procdecl(self, node):
         # Add name to parent scope
         self.set_proc_decl(node.name, node)
+        
+        # Special case the runtime funcitons
+        if node.name.id in runtime_functions:
+            self.write('\n%s:' % node.name.id, indent='')
+            self.write(runtime_functions[node.name.id], indent='')
+            return
+
         self.enter_scope()
+
         # Add name to current scope to allow recursion
         self.set_proc_decl(node.name, node)
         self.current_procedure = node.name
@@ -354,7 +363,6 @@ class CodeGenerator(syntaxtree.TreeWalker):
     def visit_program(self, node):
         self.write(PROLOG, indent='')
         self.write('goto %s;' % node.name.id)
-        self.write(RUNTIME, indent='')
 
         # Subtract 1 from the offset, since we don't have a previous FP to
         # account for.
