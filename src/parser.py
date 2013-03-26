@@ -53,9 +53,35 @@ class ParseError(Exception):
     
 class ParseFailedError(Exception): pass
 
+# Temporarily alias syntaxtree to save some space
+s = syntaxtree
+RUNTIME_DEFINITIONS = [
+    s.ProcDecl(False, s.Name('getBool'), [
+        s.Param(s.VarDecl(False, 'bool', s.Name('x'), None), 'out')], [], []),
+    s.ProcDecl(False, s.Name('getInteger'), [
+        s.Param(s.VarDecl(False, 'int', s.Name('x'), None), 'out')], [], []),
+    s.ProcDecl(False, s.Name('getFloat'), [
+        s.Param(s.VarDecl(False, 'float', s.Name('x'), None), 'out')], [], []),
+    s.ProcDecl(False, s.Name('getString'), [
+        s.Param(s.VarDecl(False, 'string', s.Name('x'), None), 'out')], [], []),
+    s.ProcDecl(False, s.Name('putBool'), [
+        s.Param(s.VarDecl(False, 'bool', s.Name('x'), None), 'in')], [], []),
+    s.ProcDecl(False, s.Name('putInteger'), [
+        s.Param(s.VarDecl(False, 'int', s.Name('x'), None), 'in')], [], []),
+    s.ProcDecl(False, s.Name('putFloat'), [
+        s.Param(s.VarDecl(False, 'float', s.Name('x'), None), 'in')], [], []),
+    s.ProcDecl(False, s.Name('putString'), [
+        s.Param(s.VarDecl(False, 'string', s.Name('x'), None), 'in')], [], [])
+]
+del s
+
+
+
+
 class Parser(object):
-    def __init__(self, token_stream):
+    def __init__(self, token_stream, include_runtime=False):
         self.error_encountered = False
+        self.include_runtime = include_runtime
         
         # tee will take care of caching the iterator so that we can get the lookahead
         self.token = None
@@ -267,6 +293,9 @@ class Parser(object):
             
             if self.error_encountered:
                 raise ParseFailedError('Errors encountered when parsing')
+            
+            if self.include_runtime:
+                decls = RUNTIME_DEFINITIONS + decls
             
             return syntaxtree.Program(name, decls, body)
         except ParseError as err:
@@ -483,13 +512,13 @@ class Parser(object):
         
         return syntaxtree.For(assignment, test, body)
         
-def parse_tokens(token_stream):
+def parse_tokens(token_stream, include_runtime=False):
     '''Return an ast created from an iterable of tokens.
     
     A node of type syntaxtree.Program will be returned, or a ValueError will be
     raised in the case of a syntax error in the input tokens.
     '''
-    return Parser(token_stream).parse()
+    return Parser(token_stream, include_runtime).parse()
     
     
 if __name__ == '__main__':
@@ -497,8 +526,12 @@ if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser(description='Test the parser functionality. With the -e switch, treat the input as an expression to parse. Otherwise treat it as a filename to parse.')
     
-    argparser.add_argument('filename_or_expression', help='the file to scan, or expression to test')
-    argparser.add_argument('-e', '--expression', action='store_true', help='parse an expression directly (make sure to surround the expression in quotes)')
+    argparser.add_argument('filename_or_expression',
+        help='the file to scan, or expression to test')
+    argparser.add_argument('-e', '--expression', action='store_true',
+        help='parse an expression directly (make sure to surround the expression in quotes)')
+    argparser.add_argument('-r', '--include-runtime', action='store_true',
+        help='include definitions of the runtime functions')
     args = argparser.parse_args()
     if args.expression:
         try:
@@ -507,7 +540,8 @@ if __name__ == '__main__':
             print err
     else:
         try:
-            syntaxtree.dump_tree(parse_tokens(scanner.tokenize_file(args.filename_or_expression)))
+            syntaxtree.dump_tree(parse_tokens(scanner.tokenize_file(args.filename_or_expression),
+                                              include_runtime=args.include_runtime))
         except ParseFailedError as err:
             print err
     
