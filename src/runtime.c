@@ -43,7 +43,11 @@ void putInteger(int val){
 }
 
 void putBool(int val) {
-    putInteger(val);   
+    if (val) {
+        printf("true");
+    } else {
+        printf("false");
+    }
 }
 
 void putFloat(float val){

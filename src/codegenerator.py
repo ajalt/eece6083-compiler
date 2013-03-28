@@ -47,102 +47,60 @@ int main() {
 '''.strip()
 
 runtime_functions = {
+'getBool':'''
+    R[0] = getBool();
+    MM[MM[SP + 1]] = R[0]; 
+    R[0] = MM[SP + 3];
+    goto *(void *)R[0];
+'''.strip(),
 'getInteger':'''
     R[0] = getInteger();
-    MM[MM[FP+1]] = R[0]; 
-    R[0] = MM[FP + 3];
-    FP = MM[FP + 2];
+    MM[MM[SP + 1]] = R[0]; 
+    R[0] = MM[SP + 3];
     goto *(void *)R[0];
-'''.strip('\n'),
+'''.strip(),
+'getFloat':'''
+    FLOAT_REG_1 = getFloat();
+    memcpy(&R[0], &FLOAT_REG_1, sizeof(float));
+    MM[MM[SP + 1]] = R[0]; 
+    R[0] = MM[SP + 3];
+    goto *(void *)R[0];
+'''.strip(),
+'getString':'''
+    FP = SP + 3;
+    SP = SP + 3;
+    R[0] = MM[MM[FP-2]]; 
+    MM[MM[FP-2]] = R[0];
+    SP = FP - 3;
+    R[0] = MM[FP];
+    FP = MM[FP-1];
+    goto *(void *)R[0];
+'''.strip(),
+'putBool':'''
+    R[0] = MM[SP + 1];
+    putBool(R[0]);
+    R[0] = MM[SP + 3];
+    goto *(void *)R[0];
+'''.strip(),
 'putInteger':'''
-    R[0] = MM[FP-2];
+    R[0] = MM[SP + 1];
     putInteger(R[0]);
-    R[0] = MM[FP+3];
-    FP = MM[FP+2];
+    R[0] = MM[SP + 3];
     goto *(void *)R[0];
-'''.strip('\n'),
+'''.strip(),
+'putFloat':'''
+    memcpy(&FLOAT_REG_1, &MM[SP + 1], sizeof(float));
+    putFloat(FLOAT_REG_1);
+    R[0] = MM[SP + 3];
+    goto *(void *)R[0];
+'''.strip(),
+'putString':'''
+    R[0] = MM[SP + 1];
+    putString((char *)R[0]);
+    R[0] = MM[SP + 3];
+    goto *(void *)R[0];
+'''.strip()
 }
-TODO = '''
-getBool:
-    FP = SP + 3;
-    SP = SP + 3;
-    R[0] = MM[MM[FP-2]]; /* x */
-    MM[MM[FP-2]] = R[0]; /* store x */
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-getInteger:
-    FP = SP + 3;
-    SP = SP + 3;
-    R[0] = MM[MM[FP-2]]; /* x */
-    MM[MM[FP-2]] = R[0]; /* store x */
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-getFloat:
-    FP = SP + 3;
-    SP = SP + 3;
-    R[0] = MM[MM[FP-2]]; /* x */
-    MM[MM[FP-2]] = R[0]; /* store x */
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-getString:
-    FP = SP + 3;
-    SP = SP + 3;
-    R[0] = MM[MM[FP-2]]; /* x */
-    MM[MM[FP-2]] = R[0]; /* store x */
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-putBool:
-    FP = SP + 3;
-    SP = SP + 3;
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-putInteger:
-    FP = SP + 3;
-    SP = SP + 3;
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-putFloat:
-    FP = SP + 3;
-    SP = SP + 3;
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-
-putString:
-    FP = SP + 3;
-    SP = SP + 3;
-    /* Unwind the stack. */
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
-    goto *(void *)R[0];
-'''
 
 class Heap(object):
     def __init__(self, items):
@@ -276,6 +234,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
             return self.register_assignements[node]
         except KeyError:
             reg = self.free_registers.get()
+            # TODO: this will load outparams unnecessarily
             value = 'MM[%s]' % self.get_memory_location(node)
             if self.generate_comments:
                 self.write('%s = %s; /* %s */' % (reg, value, node.id))
@@ -285,13 +244,13 @@ class CodeGenerator(syntaxtree.TreeWalker):
             self.register_assignements[node] = reg
             return reg
         
-    def calc_sp_offset(self, node):
-        sp_offset = 1
+    def calc_local_var_stack_size(self, node):
+        sp_offset = 0
         for decl in node.decls:
             if isinstance(decl, syntaxtree.VarDecl):
                 if decl.is_global:
                     # Since FP and SP both equal 0 at the start of the program,
-                    # the offset is the static memory location.
+                    # the the static memory location is the offset.
                     self.global_memory_locations[decl.name] = sp_offset
                 else:
                     self.current_fp_offset[decl.name] = sp_offset
@@ -322,7 +281,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         # Special case the runtime funcitons
         if node.name.id in runtime_functions:
             self.write('\n%s:' % node.name.id, indent='')
-            self.write(runtime_functions[node.name.id], indent='')
+            self.write(runtime_functions[node.name.id])
             return
 
         self.enter_scope()
@@ -331,7 +290,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.set_proc_decl(node.name, node)
         self.current_procedure = node.name
         
-        sp_offset = self.calc_sp_offset(node)
+        sp_offset = self.calc_local_var_stack_size(node) + len(node.params) + 2
         
         for i, param in enumerate(node.params, 2):
             self.current_fp_offset[param.var_decl.name] = -i
@@ -341,14 +300,18 @@ class CodeGenerator(syntaxtree.TreeWalker):
         # Add to the offsets to account for the return address and the previous
         # FP.
         self.write('FP = SP + %d;' % (len(node.params) + 2))
-        self.write('SP = SP + %d;' % (len(node.params) + sp_offset + 1))
+        self.write('SP = SP + %d;' % (sp_offset))
         
         for statement in node.body:
             self.visit(statement)
             
-        outparams = (p.var_decl.name for p in node.params
-                        if p.direction == tokens.OUT)
-        self.store_variables(outparams)
+        
+        outparams = [p.var_decl.name for p in node.params
+                        if p.direction == tokens.OUT]
+        # Store live global variables and out parameters.
+        live_vars = (r for r in self.register_assignements if
+                r in outparams or r in self.global_memory_locations)
+        self.store_variables(live_vars)
             
         if self.generate_comments:
             self.write('/* Unwind the stack. */')
@@ -364,9 +327,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.write(PROLOG, indent='')
         self.write('goto %s;' % node.name.id)
 
-        # Subtract 1 from the offset, since we don't have a previous FP to
-        # account for.
-        sp_offset = self.calc_sp_offset(node) - 1
+        sp_offset = self.calc_local_var_stack_size(node)
         
         self.write('\n%s:' % node.name.id, indent='')
 
@@ -474,7 +435,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
         value = self.visit(node.value)
         outreg = self.visit(node.target)
-        if isinstance(node.value, syntaxtree.Num) and '.' in node.value.n:
+        if (isinstance(node.value, syntaxtree.Num) and '.' in node.value.n or
+            node.target.node_type == tokens.FLOAT):
             self.write('FLOAT_REG_1 = %s;' % value)
             self.write('memcpy(&%s, &FLOAT_REG_1, sizeof(float));' % outreg)
         else:
@@ -500,10 +462,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
         
         self.store_variables(self.register_assignements)
         
-        self.write('MM[SP + 1] = FP;')
-        self.write('MM[SP + 2] = (int)&&%s;' % return_label)
         
-        # Push the references to the arguments right-to-left
+        # Push arguments right-to-left
         reg = self.free_registers.get()
         decl = self.get_proc_decl(node.func)
         for i, (arg, param) in enumerate(reversed(zip(node.args, decl.params))):
@@ -512,7 +472,11 @@ class CodeGenerator(syntaxtree.TreeWalker):
                 valuereg = reg
             else:
                 valuereg = self.visit(arg)
-            self.write('MM[SP + %d] = %s;' % (i + 3, valuereg))
+            self.write('MM[SP + %d] = %s;' % (i + 1, valuereg))
+        
+        # Python loop variables are leaked into their surrounding scope (by design)
+        self.write('MM[SP + %d] = FP;' % (i + 2))
+        self.write('MM[SP + %d] = (int)&&%s;' % (i + 3, return_label))
         
         self.write('goto %s;' % call_label)
         self.write('\n%s:' % return_label, indent='')
@@ -579,6 +543,6 @@ if __name__ == '__main__':
     ast = parser.parse_tokens(scanner.tokenize_file(args.filename),
                               include_runtime=args.include_runtime)
     if typechecker.tree_is_valid(ast):
-        import optimizer
-        optimizer.optimize_tree(ast,2)
+        #import optimizer
+        #optimizer.optimize_tree(ast, 2)
         CodeGenerator(generate_comments=True).walk(ast)
