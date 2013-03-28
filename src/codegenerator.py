@@ -34,9 +34,11 @@ PROLOG = '''
 #define true 1
 #define false 0
 #define MM_SIZE 32768
+#define INPUT_BUFFER_SIZE 1024
 
 extern int R[];
 int MM[MM_SIZE];
+char INPUT_BUFFER[INPUT_BUFFER_SIZE];
 float FLOAT_REG_1; 
 float FLOAT_REG_2;
 int SP = 0; /* stack pointer */
@@ -67,13 +69,11 @@ runtime_functions = {
     goto *(void *)R[0];
 '''.strip(),
 'getString':'''
-    FP = SP + 3;
-    SP = SP + 3;
-    R[0] = MM[MM[FP-2]]; 
-    MM[MM[FP-2]] = R[0];
-    SP = FP - 3;
-    R[0] = MM[FP];
-    FP = MM[FP-1];
+    R[0] = getString(INPUT_BUFFER);
+    HP = HP - R[0];
+    memcpy(&MM[HP], &INPUT_BUFFER, R[0]);
+    MM[MM[SP + 1]] = (int)((char *)&MM[HP]); 
+    R[0] = MM[SP + 3];
     goto *(void *)R[0];
 '''.strip(),
 'putBool':'''

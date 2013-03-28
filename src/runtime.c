@@ -1,7 +1,6 @@
 #include "stdio.h"
 #include "stdlib.h"
-
-char INPUT_BUFFER[1024];
+#include "string.h"
 
 void validateBooleanOp(int left, char op, int right, int lineno) {
     if (left != 0 && left != 1) {
@@ -33,9 +32,9 @@ float getFloat() {
     return value;
 }
 
-char* getString() {
-    scanf("%s", INPUT_BUFFER);
-    return INPUT_BUFFER;
+int getString(char* s) {
+    scanf("%s", s);
+    return strlen(s) + 1;
 }
 
 void putInteger(int val){
