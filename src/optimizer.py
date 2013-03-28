@@ -332,7 +332,11 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         
         if isinstance(node, syntaxtree.ProcDecl):
             self.define_var(node.name, (node, None))
-            
+            # Mark out parameters as referenced, since the can't be read from.
+            for param in node.params:
+                if param.direction == tokens.OUT:
+                    self.define_var(param.var_decl.name, self.REFERENCED)
+                    
         for decl in node.decls:
             if isinstance(decl, syntaxtree.ProcDecl):
                 self.define_var(decl.name, (decl, None), decl.is_global)

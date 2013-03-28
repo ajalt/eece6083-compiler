@@ -485,6 +485,51 @@ def test_out_param_invalidaiton():
 
     check_elimination(src, expected_program)
     
+def test_assignment_to_out_param():
+    src = '''
+    program test_program is
+        int a;
+        procedure f(int x out)
+        begin
+            x := 123;
+        end procedure;
+    begin
+        f(a);
+    end program
+    '''
+    
+    expected_program = Program(
+    name=Name('test_program'),
+    decls=[
+      VarDecl(
+        is_global=False,
+        type='int',
+        name=Name('a'),
+        array_length=None),
+      ProcDecl(
+        is_global=False,
+        name=Name('f'),
+        params=[
+          Param(
+            var_decl=VarDecl(
+              is_global=False,
+              type='int',
+              name=Name('x'),
+              array_length=None),
+            direction='out')],
+        decls=[],
+        body=[
+          Assign(
+            target=Name('x'),
+            value=Num('123'))])],
+    body=[
+      Call(
+        func=Name('f'),
+        args=[
+          Name('a')])])
+    
+    check_elimination(src, expected_program)
+    
 
 # -- Functional tests --
 
