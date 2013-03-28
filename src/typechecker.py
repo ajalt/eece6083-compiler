@@ -94,48 +94,50 @@ class Checker(syntaxtree.TreeWalker):
     def get_type(self, node):
         '''Return the type of a given Node instance, or raise an error if it is invalid.
         '''
+        type = None
         if isinstance(node, syntaxtree.BinaryOp):
             type = self.unify_node_types(node.left, node.right)
             if type not in (tokens.BOOL, tokens.INT) and node.op in (tokens.AND, tokens.OR, tokens.NOT):
                 raise TypeCheckError('Bitwise operators only valid on integers, not %r' % type, node.token)
             elif type not in (tokens.INT, tokens.FLOAT, tokens.BOOL):
                 raise TypeCheckError('Operator %r only valid on numbers' % node.op, node.token)
-            node.node_type = type
-            return type
             
-        if isinstance(node, syntaxtree.UnaryOp):
+        elif isinstance(node, syntaxtree.UnaryOp):
             type = self.get_type(node.operand)
             if type == tokens.FLOAT and node.op == tokens.NOT:
                 raise TypeCheckError("Operator 'not' is not valid on floats", node.token)
-            node.node_type = type
-            return type
         
-        if isinstance(node, syntaxtree.Num):
+        elif isinstance(node, syntaxtree.Num):
             if node.n in (tokens.TRUE, tokens.FALSE):
-                return tokens.BOOL
-            return tokens.FLOAT if '.' in node.n else tokens.INT
+                type = tokens.BOOL
+            else:
+                type = tokens.FLOAT if '.' in node.n else tokens.INT
         
-        if isinstance(node, syntaxtree.Name):
+        elif isinstance(node, syntaxtree.Name):
             decl = self.get_decl(node)
             if isinstance(decl, syntaxtree.Param):
                 if decl.direction != tokens.IN:
                     raise TypeCheckError('Cannot read from out parameter', node.token)
-                return decl.var_decl.type
-            if isinstance(decl, syntaxtree.ProcDecl):
+                type = decl.var_decl.type
+            elif isinstance(decl, syntaxtree.ProcDecl):
                 raise TypeCheckError('Identifier %r is a procedure, not a variable' % node.id, node.token)
-            return decl.type
+            else:
+                type = decl.type
         
-        if isinstance(node, syntaxtree.Subscript):
+        elif isinstance(node, syntaxtree.Subscript):
             decl = self.get_decl(node.name)
             if not isinstance(decl, syntaxtree.VarDecl) or decl.array_length is None:
                 raise TypeCheckError('Subscripted value is not an array', node.token)
             if self.get_type(node.index) != tokens.INT:
                 raise TypeCheckError('Array index is not an integer', node.token)
-            return decl.type
+            type = decl.type
         
-        if isinstance(node, syntaxtree.Str):
-            return tokens.STRING_TYPE
+        elif isinstance(node, syntaxtree.Str):
+            type = tokens.STRING_TYPE
         
+        if type:
+            node.node_type = type
+            return type
         raise TypeCheckError('Unknown type', node.token)
         
     def unify_node_types(self, node_a, node_b):
@@ -235,6 +237,7 @@ class Checker(syntaxtree.TreeWalker):
                 if target_decl.direction == tokens.IN:
                     self.report_error(TypeCheckError('Cannot assign to input parameter', node.target.token))
                 self.unify_types(target_decl.var_decl.type, self.get_type(node.value))
+                node.target.node_type = target_decl.var_decl.type
             else:
                 self.unify_node_types(node.target, node.value)
         except TypeCheckError as err:
