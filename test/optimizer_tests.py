@@ -2,12 +2,12 @@ import itertools
 
 from nose.tools import raises
 
-from src import scanner
-from src import tokens
-from src import parser
-from src import syntaxtree as st
-from src import typechecker
-from src import optimizer
+from ececompiler import scanner
+from ececompiler import tokens
+from ececompiler import parser
+from ececompiler import syntaxtree as st
+from ececompiler import typechecker
+from ececompiler import optimizer
 
 from src.syntaxtree import *
 

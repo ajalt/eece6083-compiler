@@ -4,10 +4,10 @@ import string
 import os
 import itertools
 
-from src import scanner
-from src import tokens
-from src import parser
-from src import syntaxtree as st
+from ececompiler import scanner
+from ececompiler import tokens
+from ececompiler import parser
+from ececompiler import syntaxtree as st
 
 def get_parser(src):
     return parser.Parser(scanner.tokenize_string(src))

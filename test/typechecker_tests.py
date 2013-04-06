@@ -2,12 +2,12 @@ import itertools
 
 from nose.tools import raises
 
-from src import scanner
-from src import tokens
-from src import parser
-from src import syntaxtree as st
-from src import typechecker
-from src.typechecker import TypeCheckError
+from ececompiler import scanner
+from ececompiler import tokens
+from ececompiler import parser
+from ececompiler import syntaxtree as st
+from ececompiler import typechecker
+from ececompiler.typechecker import TypeCheckError
 
 def get_parser(src):
     return parser.Parser(scanner.tokenize_string(src))
