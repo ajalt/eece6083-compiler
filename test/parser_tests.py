@@ -228,12 +228,12 @@ def test_procecure_declaration_with_two_parameters():
 
 def test_one_statement_in_procedure_declaration():
     src = 'procedure f() begin return; end procedure'
-    expected = st.ProcDecl(False, st.Name('f'), [], [], [tokens.RETURN])
+    expected = st.ProcDecl(False, st.Name('f'), [], [], [st.Return()])
     check_procedure_declaraiton(src, expected)
 
 def test_two_statements_in_procedure_declaration():
     src = 'procedure f() begin return; return; end procedure'
-    expected = st.ProcDecl(False, st.Name('f'), [], [], [tokens.RETURN, tokens.RETURN])
+    expected = st.ProcDecl(False, st.Name('f'), [], [], [st.Return(), st.Return()])
     check_procedure_declaraiton(src, expected)
 
 @raises(parser.ParseError)
@@ -307,7 +307,7 @@ def test_assignment_statement_with_array_subscript_expression_target():
 
 # return
 def test_return_statement():
-    assert parse_statement('return') == tokens.RETURN
+    assert parse_statement('return') == st.Return()
 
 # call
 def test_call_with_no_args():
@@ -337,22 +337,22 @@ def test_nested_calls():
 def test_minimal_if_statement():
     ast = parse_statement('if (1) then return; end if')
     assert isinstance(ast, st.If)
-    assert ast == st.If(st.Num('1'), [tokens.RETURN], [])
+    assert ast == st.If(st.Num('1'), [st.Return()], [])
 
 def test_if_else():
     ast = parse_statement('if (1) then return; else return; end if')
     assert isinstance(ast, st.If)
-    assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN])
+    assert ast == st.If(st.Num('1'), [st.Return()], [st.Return()])
 
 def test_multiple_if_statements():
     ast = parse_statement('if (1) then return; return; end if')
     assert isinstance(ast, st.If)
-    assert ast == st.If(st.Num('1'), [tokens.RETURN, tokens.RETURN], [])
+    assert ast == st.If(st.Num('1'), [st.Return(), st.Return()], [])
 
 def test_multiple_else_statements():
     ast = parse_statement('if (1) then return; else return; return; end if')
     assert isinstance(ast, st.If)
-    assert ast == st.If(st.Num('1'), [tokens.RETURN], [tokens.RETURN, tokens.RETURN])
+    assert ast == st.If(st.Num('1'), [st.Return()], [st.Return(), st.Return()])
 
 @raises(parser.ParseError)
 def test_missing_parenthesis_in_if_statement():
@@ -379,12 +379,12 @@ def test_minimal_loop_statement():
 def test_loop_with_one_body_statement():
     ast = parse_statement('for (x := 1; 2) return; end for')
     assert isinstance(ast, st.For)
-    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [tokens.RETURN])
+    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [st.Return()])
 
 def test_loop_with_two_body_statements():
     ast = parse_statement('for (x := 1; 2) return; return; end for')
     assert isinstance(ast, st.For)
-    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [tokens.RETURN, tokens.RETURN])
+    assert ast == st.For(st.Assign(st.Name('x'), st.Num('1')), st.Num('2'), [st.Return(), st.Return()])
 
 @raises(parser.ParseError)
 def test_loop_missing_assignment():
@@ -414,7 +414,7 @@ def test_loop_missing_semicolon_after_statement():
 def test_statements_resync_point_recovers_after_error():
     p = get_parser('if(1) then s = + +; return; end if')
     ast = p.statement()
-    expected = st.If(st.Num('1'), [tokens.RETURN], [])
+    expected = st.If(st.Num('1'), [st.Return()], [])
     print 'Expected:', expected
     print 'Got:     ', ast
     assert isinstance(ast, st.If)
@@ -466,12 +466,12 @@ def test_program_with_two_declarations():
 
 def test_program_with_one_statement():
     src ='program p is begin return; end program'
-    expected = st.Program(st.Name('p'), [], [tokens.RETURN])
+    expected = st.Program(st.Name('p'), [], [st.Return()])
     check_program(src, expected)
 
 def test_program_with_two_statements():
     src ='program p is begin return; return; end program'
-    expected = st.Program(st.Name('p'), [], [tokens.RETURN, tokens.RETURN])
+    expected = st.Program(st.Name('p'), [], [st.Return(), st.Return()])
     check_program(src, expected)
 
 def test_program_with_two_declarations_and_two_statement():
@@ -479,7 +479,7 @@ def test_program_with_two_declarations_and_two_statement():
     expected = st.Program(st.Name('p'),
         [st.VarDecl(False, tokens.INT, st.Name('x'), None),
          st.VarDecl(False, tokens.INT, st.Name('y'), None)],
-        [tokens.RETURN, tokens.RETURN])
+        [st.Return(), st.Return()])
     check_program(src, expected)
 
 @raises(parser.ParseFailedError)
