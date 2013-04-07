@@ -197,7 +197,6 @@ class ConstantPropagator(ConstantFolder):
         for decl in node.decls:
             if isinstance(decl, syntaxtree.ProcDecl):
                 self.define_variable(decl.name, decl)
-            
         self.visit_children(node)
             
         self.leave_scope()
@@ -206,7 +205,8 @@ class ConstantPropagator(ConstantFolder):
     
     def visit_assign(self, node):
         # self.visit_children will fold the value if possible
-        self.visit_children(node)
+        if not self.stop_propagation:
+            self.visit_children(node)
         # Don't propagate arrays, since that could take up too much memory.
         if isinstance(node.target, syntaxtree.Name):
             if self.stop_propagation:
@@ -220,6 +220,7 @@ class ConstantPropagator(ConstantFolder):
                 if isinstance(node.value, syntaxtree.Name):
                     const = self.get_const(node.value)
                     if const is not None:
+                        
                         return syntaxtree.Assign(node.target, syntaxtree.Num(const),
                                                  token=node.token)
         return node
@@ -241,7 +242,7 @@ class ConstantPropagator(ConstantFolder):
                 if isinstance(arg, syntaxtree.Name):
                     value = self.get_var(arg)
                     if value is not None:
-                        node.args[i] = syntaxtree.Num(value)
+                        node.args[i] = value
         return node
     
 class DeadCodeEliminator(syntaxtree.TreeMutator):
@@ -256,6 +257,7 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
     '''
     ASSIGNED = 1
     REFERENCED = 2
+    UNKNOWN = 3
     
     def __init__(self):
         super(DeadCodeEliminator, self).__init__()
@@ -323,7 +325,6 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
             
     def visit_block(self, node):
         # This function is used for both Program and ProcDecl nodes
-        
         if isinstance(node, syntaxtree.ProcDecl):
             if self.get_var(node.name)[1]  is None:
                 return None
@@ -332,10 +333,12 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         
         if isinstance(node, syntaxtree.ProcDecl):
             self.define_var(node.name, (node, None))
-            # Mark out parameters as referenced, since the can't be read from.
+            # Mark out parameters as unknown. Since they can't be read from,
+            # they won't be marked referenced, but we don't want to eliminate
+            # their assignments.
             for param in node.params:
                 if param.direction == tokens.OUT:
-                    self.define_var(param.var_decl.name, self.REFERENCED)
+                    self.define_var(param.var_decl.name, self.UNKNOWN)
                     
         for decl in node.decls:
             if isinstance(decl, syntaxtree.ProcDecl):
@@ -349,7 +352,7 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         # If there's a return in the body, it isn't in a branch, so it always
         # terminates the procedure.
         try:
-            del node.body[node.body.index(tokens.RETURN):]
+            del node.body[node.body.index(syntaxtree.Return()):]
         except ValueError:
             pass
 
@@ -363,8 +366,11 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         return node
     
     def visit_assign(self, node):
-        if self.get_var(node.target) == self.REFERENCED:
+        status = self.get_var(node.target)
+        if status == self.REFERENCED:
             self.define_var(node.target, self.ASSIGNED)
+            return node
+        if status == self.UNKNOWN:
             return node
         return None
 
@@ -374,12 +380,11 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         
     def visit_call(self, node):
         decl = self.get_var(node.func)[0]
-        self.define_var(node.func, (decl, self.REFERENCED))
+        self.define_var(node.func, (decl, self.REFERENCED), is_global=decl.is_global)
         for arg, param in itertools.izip(node.args, decl.params):
             if isinstance(arg, syntaxtree.Name):
                 self.define_var(arg, self.REFERENCED if param.direction ==
                                             tokens.IN else self.ASSIGNED)
-                
         return node
         
     def visit_if(self, node):

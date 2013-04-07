@@ -9,7 +9,7 @@ from ececompiler import syntaxtree as st
 from ececompiler import typechecker
 from ececompiler import optimizer
 
-from src.syntaxtree import *
+from ececompiler.syntaxtree import *
 
 def get_parser(src):
     return parser.Parser(scanner.tokenize_string(src))
@@ -150,9 +150,7 @@ def test_propagation_to_call():
           value=Num('1')),
         Call(
           func=Name('f'),
-          args=[
-            Num(
-              n=Num('1'))])
+          args=[Num('1')])
     ]
 
     check_propagation(src, expected_body)
@@ -236,6 +234,38 @@ def test_invalidation_in_loop():
         Assign(
           target=Name('b'),
           value=Name('a'))]
+    check_propagation(src, expected_body)
+    
+def test_increment_in_loop():
+    src = '''
+    program test_program is
+        int a;
+    begin
+        a := 1;
+        for (a := a + 1; a < 5)
+            return;
+        end for;
+    end program
+    '''
+    
+    expected_body = [
+      Assign(
+        target=Name('a'),
+        value=Num('1')),
+      For(
+        assignment=Assign(
+          target=Name('a'),
+          value=BinaryOp(
+            op='+',
+            left=Name('a'),
+            right=Num('1'))),
+        test=BinaryOp(
+          op='<',
+          left=Name('a'),
+          right=Num('5')),
+        body=[
+          Return()])]
+
     check_propagation(src, expected_body)
     
 # -- DeadCodeEliminator tests --
