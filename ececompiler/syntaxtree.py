@@ -219,7 +219,10 @@ class Call(object):
     __metaclass__ = NodeMeta
     __slots__ = ('func', 'args')
 
-
+class Return(object):
+    __metaclass__ = NodeMeta
+    __slots__ = ()
+    
 # Expression nodes
 class BinaryOp(object):
     __metaclass__ = NodeMeta

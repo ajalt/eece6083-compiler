@@ -4,25 +4,26 @@ program test_program is
         int a;
         int b;
     begin
-        if (i < 0) then
+        if (n < 0) then
             result := -1;
             return;
         end if;
-        if (i == 0) then
+        if (n == 0) then
             result := 0;
             return;
         end if;
-        if (i == 1) then
+        if (n == 1) then
             result := 1;
             return;
         end if;
         
         fibb(n-1, a);
         fibb(n-2, b);
-        
+
         result := a + b;
     end procedure;
 begin
-    fibb(5, fibb_result);
-    putInt(fibb_result);
+    fibb_result := -1234;
+    fibb(12, fibb_result);
+    putInteger(fibb_result);
 end program

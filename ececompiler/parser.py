@@ -56,21 +56,21 @@ class ParseFailedError(Exception): pass
 # Temporarily alias syntaxtree to save some space
 s = syntaxtree
 RUNTIME_DEFINITIONS = [
-    s.ProcDecl(False, s.Name('getBool'), [
+    s.ProcDecl(True, s.Name('getBool'), [
         s.Param(s.VarDecl(False, 'bool', s.Name('x'), None), 'out')], [], []),
-    s.ProcDecl(False, s.Name('getInteger'), [
+    s.ProcDecl(True, s.Name('getInteger'), [
         s.Param(s.VarDecl(False, 'int', s.Name('x'), None), 'out')], [], []),
-    s.ProcDecl(False, s.Name('getFloat'), [
+    s.ProcDecl(True, s.Name('getFloat'), [
         s.Param(s.VarDecl(False, 'float', s.Name('x'), None), 'out')], [], []),
-    s.ProcDecl(False, s.Name('getString'), [
+    s.ProcDecl(True, s.Name('getString'), [
         s.Param(s.VarDecl(False, 'string', s.Name('x'), None), 'out')], [], []),
-    s.ProcDecl(False, s.Name('putBool'), [
+    s.ProcDecl(True, s.Name('putBool'), [
         s.Param(s.VarDecl(False, 'bool', s.Name('x'), None), 'in')], [], []),
-    s.ProcDecl(False, s.Name('putInteger'), [
+    s.ProcDecl(True, s.Name('putInteger'), [
         s.Param(s.VarDecl(False, 'int', s.Name('x'), None), 'in')], [], []),
-    s.ProcDecl(False, s.Name('putFloat'), [
+    s.ProcDecl(True, s.Name('putFloat'), [
         s.Param(s.VarDecl(False, 'float', s.Name('x'), None), 'in')], [], []),
-    s.ProcDecl(False, s.Name('putString'), [
+    s.ProcDecl(True, s.Name('putString'), [
         s.Param(s.VarDecl(False, 'string', s.Name('x'), None), 'in')], [], [])
 ]
 del s
@@ -418,7 +418,7 @@ class Parser(object):
         if self.token.type == tokens.FOR:
             return self.for_statement()
         if self.token.type == tokens.RETURN:
-            return tokens.RETURN
+            return syntaxtree.Return(token=self.token)
         if self.token.type == tokens.IDENTIFIER:
             if self.next_token.type in (tokens.ASSIGN, tokens.OPENBRACKET):
                 return self.assignment_statement()
@@ -466,6 +466,7 @@ class Parser(object):
         return syntaxtree.Assign(target, value, token=token)
     
     def if_statement(self):
+        if_token = self.token
         self.match(tokens.OPENPAREN)
         test = self.expression()
         self.match(tokens.CLOSEPAREN)
@@ -493,9 +494,10 @@ class Parser(object):
         self.match(tokens.END)
         self.match(tokens.IF)
         
-        return syntaxtree.If(test, body, orelse)
+        return syntaxtree.If(test, body, orelse, token=if_token)
     
     def for_statement(self):
+        for_token = self.token
         self.match(tokens.OPENPAREN)
         # advance past the '(' token here, since all of the specific *_statement
         # functions expect the current token to be the start of their production
@@ -510,7 +512,7 @@ class Parser(object):
         self.match(tokens.END)
         self.match(tokens.FOR)
         
-        return syntaxtree.For(assignment, test, body)
+        return syntaxtree.For(assignment, test, body, token=for_token)
         
 def parse_tokens(token_stream, include_runtime=False):
     '''Return an ast created from an iterable of tokens.
