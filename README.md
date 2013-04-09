@@ -2,31 +2,32 @@
 
 A project for my EECE 6083: Compiler Theory class.
 
-## Quick Start
+## Usage
 * Install [Python 2.7](http://python.org/download/) if it is not already installed on your system.
-* You can see a sample of the scanner output by running the following from the root `compiler` directory:
+* You can see a sample of the output of each stage of the compiler by calling running any module from the command line.
+* To run the compiler, execute the following command from the root compiler folder:
 ```
-python src/scanner.py test/test_program.src
+python main.py /path/to/source.src
 ```
-* You can see a sample of the parser output by running either of the following:
-```
-python src/parser.py test/test_program.src
-```
-```
-python src/parser.py -e "1 + 2 * 3 / (4 + 5) == true"
-```
-* You can see a sample of the type checking by running the following:
-```
-python src/typechecker.py test/test_program.src
-```
-* You can see a sample of the optimizer by running the following:
-```
-python src/optimizer.py test/test_program.src
-```
-* You can see a sample of the code generator by running the following:
-```
-python src/codegenerator.py test/test_program.src
-```
+* The full set of options for the compiler are:
+
+        usage: main.py [-h] [-o OUTPUT] [-O {0,1,2}] [-R] [-c] [-v] filename
+        
+        Compile a source file into a c file and an executable.
+        
+        positional arguments:
+          filename              the file to parse
+        
+        optional arguments:
+          -h, --help            show this help message and exit
+          -o OUTPUT, --output OUTPUT
+                                name of the executable that will be produced
+          -O {0,1,2}            run a set of optimizations (0=no optimization,
+                                1=minimal optimization, 2=advanced optimization)
+          -R, --no-runtime      do not link the runtime IO functions
+          -c                    only parse and assemble the code to C, do not run gcc
+          -v, --verbose-assembly
+                                add comments to the generated code
 
 
 ## Testing
