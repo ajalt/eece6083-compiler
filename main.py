@@ -43,7 +43,7 @@ def main():
                 
             if not args.c:
                 sys.exit(subprocess.call(['gcc', '-m32', '-o', args.output, 'runtime.c', asm_filename]))
-        
+    sys.exit(1)
         
 if __name__ == '__main__':
     main()
