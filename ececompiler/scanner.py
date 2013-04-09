@@ -127,7 +127,7 @@ def _tokenize_line(line, lineno=0):
         pos += 1
         
 def _tokenize_file_obj(file_):
-    for lineno, line in enumerate(file_):
+    for lineno, line in enumerate(file_, 1):
         for token in _tokenize_line(line, lineno):
             yield token
     yield Token(tokens.EOF, 'EOF', 0, 0, lineno, '')
