@@ -126,6 +126,8 @@ class Checker(syntaxtree.TreeWalker):
         
         elif isinstance(node, syntaxtree.Subscript):
             decl = self.get_decl(node.name)
+            if isinstance(decl, syntaxtree.Param):
+                decl = decl.var_decl
             if not isinstance(decl, syntaxtree.VarDecl) or decl.array_length is None:
                 raise TypeCheckError('Subscripted value is not an array', node.token)
             if self.get_type(node.index) != tokens.INT:

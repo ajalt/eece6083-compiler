@@ -130,6 +130,8 @@ class ConstantPropagator(ConstantFolder):
         self.scopes.pop()
 
     def define_variable(self, name, value, is_global=False):
+        if isinstance(name, syntaxtree.Subscript):
+            name = name.name
         if is_global:
             self.global_scope[name] = value
         else:
@@ -208,21 +210,21 @@ class ConstantPropagator(ConstantFolder):
         if not self.stop_propagation:
             self.visit_children(node)
         # Don't propagate arrays, since that could take up too much memory.
-        if isinstance(node.target, syntaxtree.Name):
-            if self.stop_propagation:
-                # Unset any variables we find if we're in a loop or branch
-                self.define_variable(node.target, None)
-            else:
-                if self.is_literal(node.value):
-                    self.define_variable(node.target, node.value)
-                # Expressions consisting of a single variable don't get picked
-                # up by the constant folder.
-                if isinstance(node.value, syntaxtree.Name):
-                    const = self.get_const(node.value)
-                    if const is not None:
-                        
-                        return syntaxtree.Assign(node.target, syntaxtree.Num(const),
-                                                 token=node.token)
+        #if isinstance(node.target, syntaxtree.Name):
+        if self.stop_propagation or isinstance(node.target, syntaxtree.Subscript):
+            # Unset any variables we find if we're in a loop or branch
+            self.define_variable(node.target, None)
+        else:
+            if self.is_literal(node.value):
+                self.define_variable(node.target, node.value)
+            # Expressions consisting of a single variable don't get picked
+            # up by the constant folder.
+            if isinstance(node.value, syntaxtree.Name):
+                const = self.get_const(node.value)
+                if const is not None:
+                    
+                    return syntaxtree.Assign(node.target, syntaxtree.Num(const),
+                                             token=node.token)
         return node
     
     def visit_jump(self, node):
@@ -366,6 +368,8 @@ class DeadCodeEliminator(syntaxtree.TreeMutator):
         return node
     
     def visit_assign(self, node):
+        if isinstance(node.target, syntaxtree.Subscript):
+            return node
         status = self.get_var(node.target)
         if status == self.REFERENCED:
             self.define_var(node.target, self.ASSIGNED)

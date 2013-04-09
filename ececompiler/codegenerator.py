@@ -236,10 +236,11 @@ class CodeGenerator(syntaxtree.TreeWalker):
         if name in self.global_memory_locations:
             return str(self.global_memory_locations[name])
         elif self.current_fp_offset[name] < 0:
-            direction = {p.var_decl.name:p.direction for p in 
+            param = {p.var_decl.name:p for p in 
                     self.get_proc_decl(self.current_procedure).params}[name]
-            if direction == tokens.OUT:
-                # Out parameters are passed by reference
+            if (param.direction == tokens.OUT or
+                param.var_decl.array_length is not None):
+                # Out parameters and arrays are passed by reference
                 return 'MM[FP%d]' % self.current_fp_offset[name]
             else:
                 # In parameters are passed by value
@@ -308,18 +309,21 @@ class CodeGenerator(syntaxtree.TreeWalker):
         self.set_proc_decl(node.name, node)
         self.current_procedure = node.name
         
+        # Parameters start at FP - 2.
+        for fp_offset, param in enumerate(node.params, 2):
+            self.current_fp_offset[param.var_decl.name] = -fp_offset
+            
+        # Add 1 to the offset to account for the previous FP entry.
+        fp_offset += 1
+                
         # calc_local_var_stack_size visits children decls for us.
-        sp_offset = self.calc_local_var_stack_size(node) + len(node.params) + 2
-        
-        for i, param in enumerate(node.params, 2):
-            self.current_fp_offset[param.var_decl.name] = -i
-        
+        sp_offset = self.calc_local_var_stack_size(node)
         self.write('\n%s:' % self.get_label(node.name), indent='')
         
         # Add to the offsets to account for the return address and the previous
         # FP.
-        self.write('FP = SP + %d;' % (len(node.params) + 2))
-        self.write('SP = SP + %d;' % (sp_offset))
+        self.write('FP = SP + %d;' % (fp_offset))
+        self.write('SP = SP + %d;' % (sp_offset + fp_offset))
         
         for statement in node.body:
             self.visit(statement)
@@ -336,7 +340,7 @@ class CodeGenerator(syntaxtree.TreeWalker):
         if self.generate_comments:
             self.write('/* Unwind the stack. */')
             
-        self.write('SP = FP - %d;' % (len(node.params) + 2))
+        self.write('SP = FP - %d;' % (fp_offset))
         self.write('R[0] = MM[FP];')
         self.write('FP = MM[FP-1];')
         self.write('goto *(void *)R[0];')
@@ -395,9 +399,11 @@ class CodeGenerator(syntaxtree.TreeWalker):
                 comment = ' /* %s */' % line[node.name.token.start:endpos + 1]
             else:
                 comment = ' /* %s[...] */' % node.name.id
+        else:
+            comment = ''
             
         self.write('R[%d] = %s;%s' % (address_reg, base, comment))
-        if offset > 0:
+        if isinstance(offset, Register) or offset > 0:
             self.write('R[%d] = R[%d] + %s;' % (address_reg, address_reg, offset))
         self.last_subscript_address = address_reg
         self.write('R[%d] = MM[R[%d]];' % (value_reg, address_reg))
@@ -496,7 +502,8 @@ class CodeGenerator(syntaxtree.TreeWalker):
         reg = self.free_registers.get()
         decl = self.get_proc_decl(node.func)
         for i, (arg, param) in enumerate(reversed(zip(node.args, decl.params))):
-            if param.direction == tokens.OUT:
+            if (param.direction == tokens.OUT or
+                param.var_decl.array_length is not None):
                 self.write('%s = %s;' % (reg, self.get_memory_location(arg)))
                 valuereg = reg
             else:
