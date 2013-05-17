@@ -127,6 +127,7 @@ def _tokenize_line(line, lineno=0):
         pos += 1
         
 def _tokenize_file_obj(file_):
+    lineno = 1
     for lineno, line in enumerate(file_, 1):
         for token in _tokenize_line(line, lineno):
             yield token
